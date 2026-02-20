@@ -1,15 +1,20 @@
-[project]
+[tool.poetry]
 name = "job-data-pipeline"
 version = "0.1.0"
-description = ""
-authors = [
-    {name = "S4njuuu3291",email = "sanju329121@gmail.com"}
-]
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-]
+description = "ETL pipeline for processing job data"
+authors = ["S4njuuu3291 <sanju329121@gmail.com>"]
+package-mode = false
 
+[tool.poetry.dependencies]
+python = "^3.13"
+pytest = "^7.4.0"
+flake8 = "^6.0.0"
+mypy = "^1.5.0"
+black = "^23.9.1"
+isort = "^5.12.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest-cov = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
