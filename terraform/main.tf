@@ -231,3 +231,53 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
+
+# =========================================================
+#               EVENTBRIDGE SCHEDULER (CRON)
+# =========================================================
+
+resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
+  statement_id = "AllowExecutionFromEventBridge"
+  action       = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.kalibrr.function_name
+  principal    = "events.amazonaws.com"
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_glints" {
+  statement_id = "AllowExecutionFromEventBridge"
+  action       = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.glints.function_name
+  principal    = "events.amazonaws.com"
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
+  statement_id = "AllowExecutionFromEventBridge"
+  action       = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.jobstreet.function_name
+  principal    = "events.amazonaws.com"
+}
+
+# Rules jam 5 pagi WIB (22 UTC) setiap hari
+resource "aws_cloudwatch_event_rule" "daily_scrape" {
+  name                = "daily_scrape_rule"
+  schedule_expression = "cron(0 22 * * ? *)"
+}
+
+# Target
+resource "aws_cloudwatch_event_target" "kalibrr_target" {
+  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  target_id = "TriggerKalibrrLambda"
+  arn       = aws_lambda_function.kalibrr.arn
+}
+
+resource "aws_cloudwatch_event_target" "glints_target" {
+  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  target_id = "TriggerGlintsLambda"
+  arn       = aws_lambda_function.glints.arn
+}
+
+resource "aws_cloudwatch_event_target" "jobstreet_target" {
+  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  target_id = "TriggerJobstreetLambda"
+  arn       = aws_lambda_function.jobstreet.arn
+}
