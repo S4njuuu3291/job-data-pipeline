@@ -48,6 +48,17 @@ jobs:
                   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
                   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
                   AWS_DEFAULT_REGION: "ap-southeast-1"
+
+            - name: Terraform Import Existing Resources
+              run: |
+                  terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
+                  terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
+                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+                  AWS_DEFAULT_REGION: "ap-southeast-1"
+
             - name: Terraform Apply Storage
               run: |
                   terraform -chdir=terraform apply \
