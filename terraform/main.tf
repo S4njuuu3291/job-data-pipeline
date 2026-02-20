@@ -11,9 +11,12 @@ resource "aws_iam_user" "jobscraper_bot" {
   }
 }
 
-resource "aws_iam_access_key" "jobscraper_bot" {
-  user = aws_iam_user.jobscraper_bot.name
-}
+# NOTE: Access Key dikelola secara manual di AWS Console, bukan oleh Terraform
+# Ini untuk menghindari "LimitExceeded" error karena AWS hanya allow 2 access keys per user
+# Jika perlu access key baru, buat manually di IAM Console dan masukkan ke GitHub Secrets
+# resource "aws_iam_access_key" "jobscraper_bot" {
+#   user = aws_iam_user.jobscraper_bot.name
+# }
 
 resource "aws_iam_policy" "scraper_s3_write_policy" {
   name        = "jobscraper_s3_write_policy"
