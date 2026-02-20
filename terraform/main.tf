@@ -90,10 +90,10 @@ resource "aws_ecr_repository" "scraper_repo" {
   }
 }
 
-# data "aws_ecr_image" "scraper_latest" {
-#   repository_name = aws_ecr_repository.scraper_repo.name
-#   image_tag       = "latest"
-# }
+data "aws_ecr_image" "scraper_latest" {
+  repository_name = aws_ecr_repository.scraper_repo.name
+  image_tag       = "latest"
+}
 
 # Lifecycle Policy: Kunci agar budget tetap Rp5.000 [cite: 2026-02-11]
 resource "aws_ecr_lifecycle_policy" "cleanup" {
@@ -113,105 +113,105 @@ resource "aws_ecr_lifecycle_policy" "cleanup" {
   })
 }
 
-# # =========================================================
-# #                    LAMBDA RESOURCE
-# # =========================================================
+# =========================================================
+#                    LAMBDA RESOURCE
+# =========================================================
 
-# # Resource untuk Kalibrr
-# resource "aws_lambda_function" "kalibrr" {
-#   function_name = "jobscraper-kalibrr"
-#   role          = aws_iam_role.lambda_exec_role.arn
-#   package_type  = "Image"
-#   architectures = ["x86_64"]
-#   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+# Resource untuk Kalibrr
+resource "aws_lambda_function" "kalibrr" {
+  function_name = "jobscraper-kalibrr"
+  role          = aws_iam_role.lambda_exec_role.arn
+  package_type  = "Image"
+  architectures = ["x86_64"]
+  image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
 
-#   image_config {
-#     # Ini yang membedakan fungsinya walau image-nya sama
-#     command = ["src.entrypoint.handlers.kalibrr_handler"]
-#   }
+  image_config {
+    # Ini yang membedakan fungsinya walau image-nya sama
+    command = ["src.entrypoint.handlers.kalibrr_handler"]
+  }
 
-#   environment {
-#     variables = {
-#       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
-#       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
-#     }
-#   }
+  environment {
+    variables = {
+      PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
+      AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+    }
+  }
 
-#   memory_size = 3008
-#   timeout     = 900
-# }
+  memory_size = 3008
+  timeout     = 900
+}
 
-# # Resource untuk Glints
-# resource "aws_lambda_function" "glints" {
-#   function_name = "jobscraper-glints"
-#   role          = aws_iam_role.lambda_exec_role.arn
-#   package_type  = "Image"
-#   architectures = ["x86_64"]
-#   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+# Resource untuk Glints
+resource "aws_lambda_function" "glints" {
+  function_name = "jobscraper-glints"
+  role          = aws_iam_role.lambda_exec_role.arn
+  package_type  = "Image"
+  architectures = ["x86_64"]
+  image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
 
-#   image_config {
-#     command = ["src.entrypoint.handlers.glints_handler"]
-#   }
+  image_config {
+    command = ["src.entrypoint.handlers.glints_handler"]
+  }
 
-#   environment {
-#     variables = {
-#       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
-#       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
-#     }
-#   }
+  environment {
+    variables = {
+      PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
+      AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+    }
+  }
 
-#   memory_size = 3008
-#   timeout     = 900
-# }
+  memory_size = 3008
+  timeout     = 900
+}
 
-# # Resource untuk Jobstreet
-# resource "aws_lambda_function" "jobstreet" {
-#   function_name = "jobscraper-jobstreet"
-#   role          = aws_iam_role.lambda_exec_role.arn
-#   package_type  = "Image"
-#   architectures = ["x86_64"]
-#   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+# Resource untuk Jobstreet
+resource "aws_lambda_function" "jobstreet" {
+  function_name = "jobscraper-jobstreet"
+  role          = aws_iam_role.lambda_exec_role.arn
+  package_type  = "Image"
+  architectures = ["x86_64"]
+  image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
 
-#   image_config {
-#     command = ["src.entrypoint.handlers.jobstreet_handler"]
-#   }
+  image_config {
+    command = ["src.entrypoint.handlers.jobstreet_handler"]
+  }
 
-#   environment {
-#     variables = {
-#       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
-#       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
-#     }
-#   }
+  environment {
+    variables = {
+      PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
+      AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+    }
+  }
 
-#   memory_size = 3008
-#   timeout     = 900
-# }
+  memory_size = 3008
+  timeout     = 900
+}
 
-# # Role utama yang akan dipakai oleh ketiga Lambda
-# resource "aws_iam_role" "lambda_exec_role" {
-#   name = "jobscraper_lambda_role"
+# Role utama yang akan dipakai oleh ketiga Lambda
+resource "aws_iam_role" "lambda_exec_role" {
+  name = "jobscraper_lambda_role"
 
-#   assume_role_policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [{
-#       Action    = "sts:AssumeRole"
-#       Effect    = "Allow"
-#       Principal = { Service = "lambda.amazonaws.com" }
-#     }]
-#   })
-# }
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
 
-# resource "aws_iam_role_policy_attachment" "lambda_logs" {
-#   role       = aws_iam_role.lambda_exec_role.name
-#   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-# }
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
 
-# resource "aws_iam_role_policy_attachment" "lambda_s3" {
-#   role       = aws_iam_role.lambda_exec_role.name
-#   policy_arn = aws_iam_policy.scraper_s3_write_policy.arn
-# }
+resource "aws_iam_role_policy_attachment" "lambda_s3" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.scraper_s3_write_policy.arn
+}
 
-# resource "aws_iam_role_policy_attachment" "lambda_ecr" {
-#   role       = aws_iam_role.lambda_exec_role.name
-#   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-# }
+resource "aws_iam_role_policy_attachment" "lambda_ecr" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}

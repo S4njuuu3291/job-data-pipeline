@@ -64,6 +64,18 @@ async def create_browser(p, headless: bool = True):
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
             "--disable-backgrounding-occluded-windows",
+            "--disable-breakpad",  # Disable crash reporter for Lambda
+            "--disable-crash-reporter",  # Don't send crash reports
+            "--disable-component-extensions-with-background-pages",
+            "--disable-image-animation-resync",
+            "--disable-permissions-api",
+            "--disable-presentation-api",
+            "--disable-preconnect",
+            "--disable-speech-api",
+            "--mute-audio",  # No audio needed in Lambda
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--single-process=false",  # Explicitly use multi-process (don't use single-process)
         ],
     )
     return browser
