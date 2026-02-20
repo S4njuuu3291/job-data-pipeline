@@ -62,11 +62,6 @@ jobs:
               with:
                   terraform_version: 1.0
 
-            - name: Setup Terraform
-              uses: hashicorp/setup-terraform@v2
-              with:
-                  terraform_version: 1.0
-
             - name: Fix Terraform Permissions (Local Only)
               run: chmod -R +x /tmp/act-runner/ || true
 
@@ -74,7 +69,11 @@ jobs:
               run: terraform fmt -check -recursive terraform/
 
             - name: Terraform Init
-              run: terraform -chdir=terraform init -backend=false
+              run: terraform -chdir=terraform init
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+                  AWS_DEFAULT_REGION: "ap-southeast-1"
 
             - name: Terraform Validate
               run: terraform -chdir=terraform validate
@@ -91,7 +90,7 @@ jobs:
                   TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
 
             - name: Terraform Apply
-              if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feat/')
+              if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
               run: terraform -chdir=terraform apply -input=false -auto-approve -no-color
               env:
                   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
