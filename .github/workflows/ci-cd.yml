@@ -2,17 +2,14 @@ name: Continuous Integration & Continuous Deployment
 
 on:
     push:
-        branches:
-            - main
-            - "feat/**"
+        branches: [main, "feat/**"]
     pull_request:
-        branches:
-            - main
+        branches: [main]
     workflow_dispatch:
 
 jobs:
     # ==========================================
-    # 1. TEST JOB: Validasi Kodingan
+    # 1. TEST: Cek Kodingan Python
     # ==========================================
     test:
         runs-on: ubuntu-latest
@@ -22,42 +19,42 @@ jobs:
               uses: actions/setup-python@v4
               with:
                   python-version: "3.12"
-            - name: Install poetry
-              run: python -m pip install poetry
             - name: Install dependencies
-              run: poetry install
+              run: |
+                  python -m pip install poetry
+                  poetry install
             - name: Run tests
-              run: poetry run pytest || echo "Tests failed but continuing..."
+              run: poetry run pytest || echo "Tests failed but gas terooos..."
 
     # ==========================================
-    # 2. TERRAFORM STAGE 1: Bikin ECR & S3
+    # 2. INFRA STAGE 1: Provision ECR & S3
     # ==========================================
     terraform_infra:
         name: "Provision ECR & S3"
         runs-on: ubuntu-latest
         needs: [test]
-        environment: main_env # <--- KUNCI UTAMA: Izin akses environment secrets
+        environment: main_env
+        env:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+            AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+            AWS_DEFAULT_REGION: "ap-southeast-1"
+            TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+            TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
               with:
                   terraform_version: 1.0
+
             - name: Terraform Init
               run: terraform -chdir=terraform init
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-                  AWS_DEFAULT_REGION: "ap-southeast-1"
 
-            - name: Terraform Import Existing Resources
+            - name: Terraform Import (Biar Gak Error AlreadyExists)
               run: |
                   terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
                   terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
                   terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-                  AWS_DEFAULT_REGION: "ap-southeast-1"
 
             - name: Terraform Apply Storage
               run: |
@@ -66,21 +63,15 @@ jobs:
                     -target=aws_s3_bucket.bronze \
                     -target=aws_iam_role.lambda_exec_role \
                     -auto-approve
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-                  AWS_DEFAULT_REGION: "ap-southeast-1"
-                  TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-                  TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
 
     # ==========================================
-    # 3. BUILD & PUSH IMAGE
+    # 3. BUILD: Push Docker ke ECR
     # ==========================================
     build_and_push:
         name: "Build & Push Docker Image"
         runs-on: ubuntu-latest
         needs: [terraform_infra]
-        environment: main_env # <--- Izin akses environment secrets
+        environment: main_env
         steps:
             - uses: actions/checkout@v3
             - name: Configure AWS credentials
@@ -93,23 +84,25 @@ jobs:
               id: login-ecr
               uses: aws-actions/amazon-ecr-login@v1
             - name: Build, tag, and push image
-              env:
-                  ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-                  ECR_REPOSITORY: "job-scraper-lambda"
-                  IMAGE_TAG: "latest"
               run: |
-                  # --platform linux/amd64 WAJIB agar Lambda tidak error media type
-                  docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-                  docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+                  docker build --platform linux/amd64 -t ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest .
+                  docker push ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
 
     # ==========================================
-    # 4. TERRAFORM STAGE 2: Update Lambda
+    # 4. LAMBDA: Finalize Deployment
     # ==========================================
     terraform_lambda:
         name: "Finalize Lambda Deployment"
         runs-on: ubuntu-latest
         needs: [build_and_push]
-        environment: main_env # <--- Izin akses environment secrets
+        environment: main_env
+        env:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+            AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+            AWS_DEFAULT_REGION: "ap-southeast-1"
+            TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+            TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
@@ -117,15 +110,5 @@ jobs:
                   terraform_version: 1.0
             - name: Terraform Init
               run: terraform -chdir=terraform init
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-                  AWS_DEFAULT_REGION: "ap-southeast-1"
             - name: Terraform Apply Full
               run: terraform -chdir=terraform apply -auto-approve
-              env:
-                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-                  AWS_DEFAULT_REGION: "ap-southeast-1"
-                  TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-                  TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
