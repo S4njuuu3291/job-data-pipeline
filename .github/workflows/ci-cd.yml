@@ -61,10 +61,11 @@ jobs:
               run: terraform -chdir=terraform validate
 
             - name: Terraform Plan
-              run: terraform -chdir=terraform plan
+              run: terraform -chdir=terraform plan -input=false
               env:
                   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
                   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+                  AWS_DEFAULT_REGION: "ap-southeast-1"
 
             - name: Comment PR with Plan
               uses: actions/github-script@v6
