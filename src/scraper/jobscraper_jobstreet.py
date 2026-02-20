@@ -23,7 +23,37 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
             print("Creating new page...")
             page = await context.new_page()
             print("Page created successfully")
-            print("Resource blocking disabled for anti-bot debugging")
+            print("Setting up selective resource blocking...")
+            ad_hosts = [
+                "doubleclick.net",
+                "googlesyndication.com",
+                "google-analytics.com",
+                "googletagmanager.com",
+                "adsystem.com",
+                "ads.yahoo.com",
+                "adservice.google.com",
+            ]
+
+            async def route_handler(route):
+                url_lower = route.request.url.lower()
+                if any(host in url_lower for host in ad_hosts) or any(
+                    url_lower.endswith(ext)
+                    for ext in [
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".webp",
+                        ".svg",
+                        ".ico",
+                    ]
+                ):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", route_handler)
+            print("Selective resource blocking enabled")
 
             @retry(
                 stop=stop_after_attempt(3),
@@ -32,7 +62,7 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
             )
             async def navigate_with_retry():
                 print(f"Navigating to URL: {url}")
-                await page.goto(url, wait_until="networkidle", timeout=60000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
             try:
                 await navigate_with_retry()

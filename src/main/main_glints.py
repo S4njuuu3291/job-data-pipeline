@@ -21,7 +21,7 @@ async def run_glints_pipeline(keywords: list):
             f"&lowestLocationLevel=1&sortBy=LATEST&jobTypes=INTERNSHIP%2CFULL_TIME"
             f"&yearsOfExperienceRanges=LESS_THAN_A_YEAR%2CFRESH_GRAD%2CNO_EXPERIENCE"
         )
-        raw_data = await jobscraper_glints(URL, headless=False)
+        raw_data = await jobscraper_glints(URL, headless=True)
 
         if not raw_data:
             print("❌ Gagal: Tidak ada data yang berhasil ditarik.")
