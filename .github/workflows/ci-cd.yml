@@ -111,12 +111,16 @@ jobs:
             - name: Terraform Init
               run: terraform -chdir=terraform init
 
-            - name: Import Existing Resources
+            - name: Terraform Import (Full Protection)
               run: |
                   terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
+                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
                   terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
                   terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
-                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
+                  terraform -chdir=terraform import aws_iam_policy.scraper_s3_write_policy arn:aws:iam::730335315755:policy/jobscraper_s3_write_policy || true
+                  terraform -chdir=terraform import aws_lambda_function.kalibrr jobscraper-kalibrr || true
+                  terraform -chdir=terraform import aws_lambda_function.glints jobscraper-glints || true
+                  terraform -chdir=terraform import aws_lambda_function.jobstreet jobscraper-jobstreet || true
 
             - name: Terraform Apply Full
               run: terraform -chdir=terraform apply -auto-approve
