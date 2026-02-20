@@ -115,8 +115,12 @@ resource "aws_lambda_function" "kalibrr" {
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
   
-  # FIX: Tambahkan ini untuk menghindari bug Provider Inconsistent Plan
   publish       = false 
+
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
 
   image_config {
     command = ["src.entrypoint.handlers.kalibrr_handler"]
@@ -143,6 +147,11 @@ resource "aws_lambda_function" "glints" {
   
   publish       = false 
 
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
+
   image_config {
     command = ["src.entrypoint.handlers.glints_handler"]
   }
@@ -167,6 +176,11 @@ resource "aws_lambda_function" "jobstreet" {
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
   
   publish       = false 
+
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
 
   image_config {
     command = ["src.entrypoint.handlers.jobstreet_handler"]
