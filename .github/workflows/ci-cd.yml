@@ -7,7 +7,7 @@ on:
     push:
         branches:
             - feat/initial-scaffolding
-            - feat/feat/scraper-engine
+            - feat/scraper-engine
     workflow_dispatch:
 
 jobs:
