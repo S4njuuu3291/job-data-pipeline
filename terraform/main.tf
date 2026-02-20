@@ -239,21 +239,21 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
 resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
   statement_id = "AllowExecutionFromEventBridge"
   action       = "lambda:InvokeFunction"
-  functino_name = aws_lambda_function.kalibrr.function_name
+  function_name = aws_lambda_function.kalibrr.function_name
   principal    = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_glints" {
   statement_id = "AllowExecutionFromEventBridge"
   action       = "lambda:InvokeFunction"
-  functino_name = aws_lambda_function.glints.function_name
+  function_name = aws_lambda_function.glints.function_name
   principal    = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
   statement_id = "AllowExecutionFromEventBridge"
   action       = "lambda:InvokeFunction"
-  functino_name = aws_lambda_function.jobstreet.function_name
+  function_name = aws_lambda_function.jobstreet.function_name
   principal    = "events.amazonaws.com"
 }
 
