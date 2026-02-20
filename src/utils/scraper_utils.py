@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 from typing import Dict, TypedDict
 
@@ -46,20 +47,43 @@ async def fast_human_scroll(page: Page):
 
 
 async def create_browser(p, headless: bool = True):
+    """Create browser with Lambda-safe configuration."""
     slow_mo = 200 if not headless else 0
-    browser = await p.chromium.launch(
-        headless=headless,
-        slow_mo=slow_mo,
-        args=[
-            "--disable-blink-features=AutomationControlled",
-            "--use-fake-ui-for-media-stream",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-        ],
-    )
-    return browser
+    is_lambda = os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+    
+    # Base arguments that work reliably
+    args = [
+        "--disable-blink-features=AutomationControlled",
+        "--use-fake-ui-for-media-stream",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-dev-tools",
+        "--disable-client-side-phishing-detection",
+        "--disable-cloud-import",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-default-apps",
+        "--disable-extensions",
+        "--disable-features=Translate",
+        "--disable-sync",
+    ]
+    
+    # Add Lambda-specific args for stability
+    if is_lambda:
+        args.append("--single-process")
+        args.append("--no-zygote")
+    
+    try:
+        browser = await p.chromium.launch(
+            headless=headless,
+            slow_mo=slow_mo,
+            args=args,
+        )
+        return browser
+    except Exception as e:
+        print(f"ERROR: Failed to launch browser: {type(e).__name__}: {str(e)}")
+        raise
 
 
 async def create_stealth_context(
