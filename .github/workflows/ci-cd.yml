@@ -27,10 +27,10 @@ jobs:
               run: poetry run pytest || echo "Tests failed but gas terooos..."
 
     # ==========================================
-    # 2. INFRA STAGE 1: Provision ECR & S3
+    # 2. INFRA STAGE 1: Provision ECR, S3, & User
     # ==========================================
     terraform_infra:
-        name: "Provision ECR & S3"
+        name: "Provision Storage & IAM"
         runs-on: ubuntu-latest
         needs: [test]
         environment: main_env
@@ -40,7 +40,6 @@ jobs:
             AWS_DEFAULT_REGION: "ap-southeast-1"
             TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
             TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
@@ -50,8 +49,9 @@ jobs:
             - name: Terraform Init
               run: terraform -chdir=terraform init
 
-            - name: Terraform Import (Biar Gak Error AlreadyExists)
+            - name: Terraform Import (Core Resources)
               run: |
+                  terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
                   terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
                   terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
                   terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
@@ -59,6 +59,7 @@ jobs:
             - name: Terraform Apply Storage
               run: |
                   terraform -chdir=terraform apply \
+                    -target=aws_iam_user.jobscraper_bot \
                     -target=aws_ecr_repository.scraper_repo \
                     -target=aws_s3_bucket.bronze \
                     -target=aws_iam_role.lambda_exec_role \
@@ -102,16 +103,16 @@ jobs:
             AWS_DEFAULT_REGION: "ap-southeast-1"
             TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
             TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
               with:
                   terraform_version: 1.0
+
             - name: Terraform Init
               run: terraform -chdir=terraform init
 
-            - name: Terraform Import (Full Protection)
+            - name: Terraform Import (All Remaining)
               run: |
                   terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
                   terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
