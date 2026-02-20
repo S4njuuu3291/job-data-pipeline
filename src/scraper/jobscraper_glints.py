@@ -80,7 +80,9 @@ async def jobscraper_glints(url: str, headless: bool = True):
                         full_url = f"https://glints.com{relative_url}"
 
                         # 3. Company Name
-                        company_elem = card.locator('[data-cy="company_name_job_card"] a').first
+                        company_elem = card.locator(
+                            '[data-cy="company_name_job_card"] a'
+                        ).first
                         company_name = (await company_elem.text_content()).strip()
 
                         # 4. Location

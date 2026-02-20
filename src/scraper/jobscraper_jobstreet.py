@@ -12,8 +12,6 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
     from tenacity import retry, stop_after_attempt, wait_exponential
     import hashlib
     import asyncio
-    import json
-    import os
 
     async def _scrape():
         async with async_playwright() as p:

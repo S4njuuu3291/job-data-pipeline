@@ -11,8 +11,6 @@ async def jobscraper_kalibrr(url: str, headless: bool = True):
     from src.utils.keywords import ALLOWED, BLOCKED
     from tenacity import retry, stop_after_attempt, wait_exponential
     import hashlib
-    import json
-    import os
 
     async def _scrape():
         async with async_playwright() as p:
