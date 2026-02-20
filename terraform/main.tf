@@ -125,7 +125,7 @@ resource "aws_lambda_function" "kalibrr" {
 
   image_config {
     # Ini yang membedakan fungsinya walau image-nya sama
-    command = ["src.handlers.kalibrr_handler"]
+    command = ["src.entrypoint.handlers.kalibrr_handler"]
   }
 
   environment {
@@ -148,7 +148,7 @@ resource "aws_lambda_function" "glints" {
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
 
   image_config {
-    command = ["src.handlers.glints_handler"]
+    command = ["src.entrypoint.handlers.glints_handler"]
   }
 
   environment {
@@ -171,7 +171,7 @@ resource "aws_lambda_function" "jobstreet" {
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
 
   image_config {
-    command = ["src.handlers.jobstreet_handler"]
+    command = ["src.entrypoint.handlers.jobstreet_handler"]
   }
 
   environment {
