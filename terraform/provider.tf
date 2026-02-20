@@ -13,9 +13,6 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  profile = "jobscraper-terraform-executor"
-
-  # Optionally allow skipping requesting account ID
   skip_metadata_api_check = true
   skip_region_validation  = false
 
