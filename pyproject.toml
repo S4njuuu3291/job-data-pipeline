@@ -6,7 +6,7 @@ authors = ["S4njuuu3291 <sanju329121@gmail.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.12"
 pytest = "^7.4.0"
 flake8 = "^6.0.0"
 mypy = "^1.5.0"

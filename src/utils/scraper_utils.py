@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 from typing import Dict, TypedDict
 
@@ -15,10 +16,9 @@ class DeviceProfile(TypedDict):
 
 DEVICE_PROFILES: Dict[str, DeviceProfile] = {
     "desktop_chrome": {
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-            AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "viewport": {"width": 1080, "height": 720},
-        "device_scale_factor": 0.75,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "viewport": {"width": 1920, "height": 1080},
+        "device_scale_factor": 1.0,
         "is_mobile": False,
         "has_touch": False,
     }
@@ -47,26 +47,43 @@ async def fast_human_scroll(page: Page):
 
 
 async def create_browser(p, headless: bool = True):
+    """Create browser with Lambda-safe configuration."""
     slow_mo = 200 if not headless else 0
-    browser = await p.chromium.launch(
-        headless=headless,
-        slow_mo=slow_mo,
-        args=[
-            "--disable-blink-features=AutomationControlled",
-            "--disable-gpu",  # Disable GPU hardware acceleration
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-extensions",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--disable-translate",
-            "--disable-background-timer-throttling",
-            "--disable-renderer-backgrounding",
-            "--disable-backgrounding-occluded-windows",
-        ],
-    )
-    return browser
+    is_lambda = os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+
+    # Base arguments that work reliably
+    args = [
+        "--disable-blink-features=AutomationControlled",
+        "--use-fake-ui-for-media-stream",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-dev-tools",
+        "--disable-client-side-phishing-detection",
+        "--disable-cloud-import",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-default-apps",
+        "--disable-extensions",
+        "--disable-features=Translate",
+        "--disable-sync",
+    ]
+
+    # Add Lambda-specific args for stability
+    if is_lambda:
+        args.append("--single-process")
+        args.append("--no-zygote")
+
+    try:
+        browser = await p.chromium.launch(
+            headless=headless,
+            slow_mo=slow_mo,
+            args=args,
+        )
+        return browser
+    except Exception as e:
+        print(f"ERROR: Failed to launch browser: {type(e).__name__}: {str(e)}")
+        raise
 
 
 async def create_stealth_context(

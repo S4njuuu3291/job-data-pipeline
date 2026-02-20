@@ -23,7 +23,8 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
             print("Creating new page...")
             page = await context.new_page()
             print("Page created successfully")
-            print("Resource blocking disabled for anti-bot debugging")
+            # Resource blocking DISABLED - JobStreet detects when resources are blocked
+            # Allow all resources to load normally for stealth
 
             @retry(
                 stop=stop_after_attempt(3),
@@ -32,11 +33,11 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
             )
             async def navigate_with_retry():
                 print(f"Navigating to URL: {url}")
-                await page.goto(url, wait_until="networkidle", timeout=60000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
             try:
                 await navigate_with_retry()
-                print("Successfully loaded page")
+                print("Successfully loaded page (domcontentloaded)")
                 print("Waiting 5 seconds for hydration...")
                 await page.wait_for_timeout(5000)
             except Exception as e:

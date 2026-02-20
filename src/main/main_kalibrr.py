@@ -11,7 +11,7 @@ async def run_kalibrr_pipeline(keywords: list[str]):
     )  # DataFrame kosong untuk menampung semua hasil dari berbagai keyword
 
     for keyword in keywords:
-        print("--- 🏁 Memulai Pipeline Kalibrr ---")
+        print("--- Start Kalibrr Pipeline ---")
         URL = (
             f"https://kalibrr.id/id-ID/home/w/100-internship-_-ojt/w/"
             f"200-entry-level-_-junior-and-apprentice/te/{keyword}?sort=Relevance"

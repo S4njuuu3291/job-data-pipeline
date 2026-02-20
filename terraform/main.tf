@@ -11,9 +11,12 @@ resource "aws_iam_user" "jobscraper_bot" {
   }
 }
 
-resource "aws_iam_access_key" "jobscraper_bot" {
-  user = aws_iam_user.jobscraper_bot.name
-}
+# NOTE: Access Key dikelola secara manual di AWS Console, bukan oleh Terraform
+# Ini untuk menghindari "LimitExceeded" error karena AWS hanya allow 2 access keys per user
+# Jika perlu access key baru, buat manually di IAM Console dan masukkan ke GitHub Secrets
+# resource "aws_iam_access_key" "jobscraper_bot" {
+#   user = aws_iam_user.jobscraper_bot.name
+# }
 
 resource "aws_iam_policy" "scraper_s3_write_policy" {
   name        = "jobscraper_s3_write_policy"
@@ -23,23 +26,16 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowListBucket"
-        Effect = "Allow"
-        Action = ["s3:ListBucket"]
-        Resource = [
-          aws_s3_bucket.bronze.arn
-        ]
+        Sid      = "AllowListBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = [aws_s3_bucket.bronze.arn]
       },
       {
-        Sid    = "AllowObjectReadWrite"
-        Effect = "Allow"
-        Action = [
-          "s3:PutObject",
-          "s3:GetObject"
-        ]
-        Resource = [
-          "${aws_s3_bucket.bronze.arn}/*"
-        ]
+        Sid      = "AllowObjectReadWrite"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = ["${aws_s3_bucket.bronze.arn}/*"]
       }
     ]
   })
@@ -54,10 +50,9 @@ resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
 #                    BUCKET RESOURCE
 # =========================================================
 
-# BRONZE
-
 resource "aws_s3_bucket" "bronze" {
-  bucket = "jobscraper-bronze-data-8424560"
+  bucket        = "jobscraper-bronze-data-8424560"
+  force_destroy = true
 
   tags = {
     Layer   = "Bronze"
@@ -81,10 +76,11 @@ resource "aws_s3_bucket_public_access_block" "bronze" {
 
 resource "aws_ecr_repository" "scraper_repo" {
   name                 = "job-scraper-lambda"
+  force_delete         = true
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
-    scan_on_push = true # Cek celah keamanan otomatis tiap push
+    scan_on_push = true
   }
 }
 
@@ -93,7 +89,6 @@ data "aws_ecr_image" "scraper_latest" {
   image_tag       = "latest"
 }
 
-# Lifecycle Policy: Kunci agar budget tetap Rp5.000 [cite: 2026-02-11]
 resource "aws_ecr_lifecycle_policy" "cleanup" {
   repository = aws_ecr_repository.scraper_repo.name
 
@@ -122,10 +117,16 @@ resource "aws_lambda_function" "kalibrr" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+  
+  publish       = false 
+
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
 
   image_config {
-    # Ini yang membedakan fungsinya walau image-nya sama
-    command = ["src.handlers.kalibrr_handler"]
+    command = ["src.entrypoint.handlers.kalibrr_handler"]
   }
 
   environment {
@@ -146,9 +147,16 @@ resource "aws_lambda_function" "glints" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+  
+  publish       = false 
+
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
 
   image_config {
-    command = ["src.handlers.glints_handler"]
+    command = ["src.entrypoint.handlers.glints_handler"]
   }
 
   environment {
@@ -169,9 +177,16 @@ resource "aws_lambda_function" "jobstreet" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+  
+  publish       = false 
+
+  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
+  lifecycle {
+    ignore_changes = [publish]
+  }
 
   image_config {
-    command = ["src.handlers.jobstreet_handler"]
+    command = ["src.entrypoint.handlers.jobstreet_handler"]
   }
 
   environment {
@@ -185,7 +200,10 @@ resource "aws_lambda_function" "jobstreet" {
   timeout     = 900
 }
 
-# Role utama yang akan dipakai oleh ketiga Lambda
+# =========================================================
+#                    IAM ROLE LAMBDA
+# =========================================================
+
 resource "aws_iam_role" "lambda_exec_role" {
   name = "jobscraper_lambda_role"
 
