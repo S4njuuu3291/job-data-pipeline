@@ -7,6 +7,7 @@ on:
     push:
         branches:
             - feat/initial-scaffolding
+    workflow_dispatch:
 
 jobs:
     test:
@@ -27,11 +28,14 @@ jobs:
             - name: Create venv
               run: poetry install
 
-            # - name: Run linting
-            #   run: poetry run flake8
+            - name: Run linting
+              run: poetry run flake8 src
 
-            # - name: Run type checking
-            #   run: poetry run mypy
+            - name: Run type checking
+              run: poetry run mypy src
+
+            - name: Run tests
+              run: poetry run pytest --cov=src --cov-report=xml
 
             - name: Upload coverage
               uses: codecov/codecov-action@v3
