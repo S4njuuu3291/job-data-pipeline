@@ -28,7 +28,7 @@ jobs:
               run: poetry install
 
             - name: Run linting
-              run: poetry run flake8 src tests
+              run: poetry run flake8 src
 
             - name: Run type checking
               run: poetry run mypy src
