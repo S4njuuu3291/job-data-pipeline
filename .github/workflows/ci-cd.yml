@@ -50,6 +50,8 @@ jobs:
         permissions:
             pull-requests: write
             contents: read
+        env:
+            RUNNER_TEMP: /tmp/act-runner
 
         steps:
             - name: Checkout code
@@ -59,6 +61,14 @@ jobs:
               uses: hashicorp/setup-terraform@v2
               with:
                   terraform_version: 1.0
+
+            - name: Setup Terraform
+              uses: hashicorp/setup-terraform@v2
+              with:
+                  terraform_version: 1.0
+
+            - name: Fix Terraform Permissions (Local Only)
+              run: chmod -R +x /tmp/act-runner/ || true
 
             - name: Terraform Format Check
               run: terraform fmt -check -recursive terraform/
@@ -80,6 +90,17 @@ jobs:
                   TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
                   TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
 
+            - name: Terraform Apply
+              if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/feat/')
+              run: terraform -chdir=terraform apply -input=false -auto-approve -no-color
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+                  AWS_DEFAULT_REGION: "ap-southeast-1"
+
+                  TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+                  TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+
             - name: Comment PR with Plan
               if: github.event_name == 'pull_request'
               uses: actions/github-script@v6
@@ -91,42 +112,6 @@ jobs:
                         repo: context.repo.repo,
                         body: '✅ Terraform plan completed. Review changes above.'
                       })
-
-    # =========================================================
-    #                    ECR REPOSITORY
-    # =========================================================
-
-    # resource "aws_ecr_repository" "scraper_repo" {
-    #   name                 = "job-scraper-lambda"
-    #   image_tag_mutability = "MUTABLE"
-
-    #   image_scanning_configuration {
-    #     scan_on_push = true # Cek celah keamanan otomatis tiap push
-    #   }
-    # }
-
-    # data "aws_ecr_image" "scraper_latest" {
-    #   repository_name = aws_ecr_repository.scraper_repo.name
-    #   image_tag       = "latest"
-    # }
-
-    # # Lifecycle Policy: Kunci agar budget tetap Rp5.000 [cite: 2026-02-11]
-    # resource "aws_ecr_lifecycle_policy" "cleanup" {
-    #   repository = aws_ecr_repository.scraper_repo.name
-
-    #   policy = jsonencode({
-    #     rules = [{
-    #       rulePriority = 1
-    #       description  = "Hanya simpan 1 image terbaru, hapus sisanya"
-    #       selection = {
-    #         tagStatus   = "any"
-    #         countType   = "imageCountMoreThan"
-    #         countNumber = 1
-    #       }
-    #       action = { type = "expire" }
-    #     }]
-    #   })
-    # }
 
     deploy:
         # Docker image build, tag and push to AWS ECR
