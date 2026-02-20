@@ -110,5 +110,13 @@ jobs:
                   terraform_version: 1.0
             - name: Terraform Init
               run: terraform -chdir=terraform init
+
+            - name: Import Existing Resources
+              run: |
+                  terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
+                  terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
+                  terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
+                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
+
             - name: Terraform Apply Full
               run: terraform -chdir=terraform apply -auto-approve
