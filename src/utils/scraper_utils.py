@@ -1,8 +1,19 @@
 import asyncio
 import random
-from playwright.async_api import Page, Browser, BrowserContext
+from typing import Dict, TypedDict
 
-DEVICE_PROFILES = {
+from playwright.async_api import Page, Browser, BrowserContext, ViewportSize
+
+
+class DeviceProfile(TypedDict):
+    user_agent: str
+    viewport: ViewportSize
+    device_scale_factor: float
+    is_mobile: bool
+    has_touch: bool
+
+
+DEVICE_PROFILES: Dict[str, DeviceProfile] = {
     "desktop_chrome": {
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
             AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -62,7 +73,7 @@ async def create_stealth_context(
     browser: Browser,
     profile: str = "desktop_chrome",
 ) -> BrowserContext:
-    device = DEVICE_PROFILES.get(profile)
+    device = DEVICE_PROFILES[profile]
 
     context = await browser.new_context(
         user_agent=device["user_agent"],

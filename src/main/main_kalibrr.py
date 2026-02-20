@@ -1,5 +1,5 @@
 # Lazy import: pindahkan import berat ke dalam fungsi
-async def run_kalibrr_pipeline(keywords: list):
+async def run_kalibrr_pipeline(keywords: list[str]):
     # Import pandas HANYA saat pipeline jalan
     import pandas as pd
     from src.scraper.jobscraper_kalibrr import jobscraper_kalibrr
@@ -51,7 +51,6 @@ async def run_kalibrr_pipeline(keywords: list):
 if __name__ == "__main__":
     import asyncio
 
-    keywords = "data-engineer-intern"
     keywords = [
         "data-engineer-intern",
         "etl-developer-intern",
