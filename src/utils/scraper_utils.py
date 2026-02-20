@@ -50,7 +50,7 @@ async def create_browser(p, headless: bool = True):
     """Create browser with Lambda-safe configuration."""
     slow_mo = 200 if not headless else 0
     is_lambda = os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
-    
+
     # Base arguments that work reliably
     args = [
         "--disable-blink-features=AutomationControlled",
@@ -68,12 +68,12 @@ async def create_browser(p, headless: bool = True):
         "--disable-features=Translate",
         "--disable-sync",
     ]
-    
+
     # Add Lambda-specific args for stability
     if is_lambda:
         args.append("--single-process")
         args.append("--no-zygote")
-    
+
     try:
         browser = await p.chromium.launch(
             headless=headless,
