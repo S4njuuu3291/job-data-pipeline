@@ -14,7 +14,7 @@ async def run_glints_pipeline(keywords: list):
     )  # DataFrame kosong untuk menampung semua hasil dari berbagai keyword
 
     for keyword in keywords:
-        print("--- 🏁 Memulai Pipeline glints ---")
+        print("--- Start Glints Pipeline ---")
         URL = (
             f"https://glints.com/id/opportunities/jobs/explore?"
             f"keyword={keyword}&country=ID&locationName=All+Cities%2FProvinces"

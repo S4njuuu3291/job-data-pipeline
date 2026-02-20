@@ -15,10 +15,9 @@ class DeviceProfile(TypedDict):
 
 DEVICE_PROFILES: Dict[str, DeviceProfile] = {
     "desktop_chrome": {
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-            AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "viewport": {"width": 1080, "height": 720},
-        "device_scale_factor": 0.75,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "viewport": {"width": 1920, "height": 1080},
+        "device_scale_factor": 1.0,
         "is_mobile": False,
         "has_touch": False,
     }
@@ -53,29 +52,11 @@ async def create_browser(p, headless: bool = True):
         slow_mo=slow_mo,
         args=[
             "--disable-blink-features=AutomationControlled",
-            "--disable-gpu",  # Disable GPU hardware acceleration
+            "--use-fake-ui-for-media-stream",
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
-            "--disable-extensions",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--disable-translate",
-            "--disable-background-timer-throttling",
-            "--disable-renderer-backgrounding",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-breakpad",  # Disable crash reporter for Lambda
-            "--disable-crash-reporter",  # Don't send crash reports
-            "--disable-component-extensions-with-background-pages",
-            "--disable-image-animation-resync",
-            "--disable-permissions-api",
-            "--disable-presentation-api",
-            "--disable-preconnect",
-            "--disable-speech-api",
-            "--mute-audio",  # No audio needed in Lambda
-            "--no-default-browser-check",
-            "--no-first-run",
-            "--single-process=false",  # Explicitly use multi-process (don't use single-process)
+            "--disable-gpu",
         ],
     )
     return browser

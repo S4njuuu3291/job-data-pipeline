@@ -14,13 +14,13 @@ async def run_jobstreet_pipeline(keywords: list):
     )  # DataFrame kosong untuk menampung semua hasil dari berbagai keyword
 
     for keyword in keywords:
-        print("--- 🏁 Memulai Pipeline jobstreet ---")
+        print("--- Start JobStreet Pipeline ---")
         URL = f"https://id.jobstreet.com/id/{keyword}-jobs?daterange=7"
 
         raw_data = await jobscraper_jobstreet(URL, headless=True)
 
         if not raw_data:
-            print("❌ Gagal: Tidak ada data yang berhasil ditarik.")
+            print("ERROR: No data extracted.")
             continue
 
         df_jobstreet = pd.DataFrame(raw_data)
@@ -37,15 +37,15 @@ async def run_jobstreet_pipeline(keywords: list):
         )  # Hapus duplikat berdasarkan job_id
 
         df_validated = validate_job_data(df)
-        print(f"✅ Validasi Sukses: {len(df_validated)} baris siap dikirim.")
+        print(f"[OK] Validation Success: {len(df_validated)} rows ready.")
 
         success = upload_to_s3(df_validated, platform="jobstreet")
         if success:
-            print("--- 🏆 Pipeline Selesai dengan Sukses ---")
+            print("--- Pipeline Completed Successfully ---")
         else:
-            print("--- ⚠️ Pipeline Selesai dengan Error di S3 ---")
+            print("--- Pipeline Completed with S3 Error ---")
     except Exception as e:
-        print(f"❌ Pipeline Berhenti di tahap Validasi/Upload: {e}")
+        print(f"ERROR: Pipeline stopped at Validation/Upload: {e}")
 
 
 if __name__ == "__main__":
