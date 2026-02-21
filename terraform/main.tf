@@ -343,7 +343,7 @@ resource "aws_glue_crawler" "bronze_crawler" {
   role = aws_iam_role.glue_role.arn
 
   s3_target {
-    path = "s3://${aws_s3_bucket.bronze}/"
+    path = "s3://${aws_s3_bucket.bronze.id}/"
   }
 
   configuration = jsonencode({
