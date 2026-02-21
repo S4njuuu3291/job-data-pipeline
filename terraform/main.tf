@@ -325,9 +325,8 @@ resource "aws_iam_policy" "glue_s3_read" {
         "s3:GetObject",
       ]
       Resource = [
-        aws_s3_bucket.jobscraper_bucket.arn,
-        "${aws_s3_bucket.jobscraper_bucket.arn}/*"
-      ]
+          aws_s3_bucket.bronze.arn,
+          "${aws_s3_bucket.bronze.arn}/*"]
     }]
   })
 }
@@ -344,7 +343,7 @@ resource "aws_glue_crawler" "bronze_crawler" {
   role = aws_iam_role.glue_role.arn
 
   s3_target {
-    path = "s3://${aws_s3_bucket.jobscraper_bucket.id}/"
+    path = "s3://${aws_s3_bucket.bronze}/"
   }
 
   configuration = jsonencode({
