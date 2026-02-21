@@ -350,7 +350,7 @@ resource "aws_glue_crawler" "bronze_crawler" {
     Version = 1.0
     CrawlerOutput = {
       Partitions = {
-        AddOrReplaceBehavior = "InheritFromTable"
+        AddOrUpdateBehavior = "InheritFromTable"
       }
     }
   })
