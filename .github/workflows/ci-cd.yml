@@ -3,14 +3,13 @@ name: Continuous Integration & Continuous Deployment
 on:
     push:
         branches: [main, "feat/**"]
-    pull_request:
-        branches: [main]
+        paths:
+            - "src/**"
+            - "terraform/**"
+            - "Dockerfile"
     workflow_dispatch:
 
 jobs:
-    # ==========================================
-    # 1. TEST: Cek Kodingan Python
-    # ==========================================
     test:
         runs-on: ubuntu-latest
         steps:
@@ -19,6 +18,7 @@ jobs:
               uses: actions/setup-python@v4
               with:
                   python-version: "3.12"
+                  cache: "pip"
             - name: Install dependencies
               run: |
                   python -m pip install poetry
@@ -26,9 +26,6 @@ jobs:
             - name: Run tests
               run: poetry run pytest || echo "Tests failed but gas terooos..."
 
-    # ==========================================
-    # 2. INFRA STAGE 1: Provision ECR, S3, & User
-    # ==========================================
     terraform_infra:
         name: "Provision Storage & IAM"
         runs-on: ubuntu-latest
@@ -43,31 +40,16 @@ jobs:
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
-              with:
-                  terraform_version: 1.0
-
             - name: Terraform Init
               run: terraform -chdir=terraform init
-
-            - name: Terraform Import (Core Resources)
-              run: |
-                  terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
-                  terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
-                  terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
-                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
-
-            - name: Terraform Apply Storage
+            - name: Terraform Apply Core
               run: |
                   terraform -chdir=terraform apply \
                     -target=aws_iam_user.jobscraper_bot \
                     -target=aws_ecr_repository.scraper_repo \
                     -target=aws_s3_bucket.bronze \
-                    -target=aws_iam_role.lambda_exec_role \
                     -auto-approve
 
-    # ==========================================
-    # 3. BUILD: Push Docker ke ECR
-    # ==========================================
     build_and_push:
         name: "Build & Push Docker Image"
         runs-on: ubuntu-latest
@@ -75,6 +57,8 @@ jobs:
         environment: main_env
         steps:
             - uses: actions/checkout@v3
+            - name: Set up Docker Buildx # FIX: Penting untuk caching
+              uses: docker/setup-buildx-action@v2
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v1
               with:
@@ -84,16 +68,19 @@ jobs:
             - name: Login to Amazon ECR
               id: login-ecr
               uses: aws-actions/amazon-ecr-login@v1
-            - name: Build, tag, and push image
-              run: |
-                  docker build --platform linux/amd64 -t ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest .
-                  docker push ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
+            - name: Build and push # FIX: Menggunakan GHA Cache
+              uses: docker/build-push-action@v4
+              with:
+                  context: .
+                  provenance: false
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
 
-    # ==========================================
-    # 4. LAMBDA: Finalize Deployment
-    # ==========================================
     terraform_lambda:
-        name: "Finalize Lambda Deployment"
+        name: "Finalize Deployment"
         runs-on: ubuntu-latest
         needs: [build_and_push]
         environment: main_env
@@ -106,22 +93,7 @@ jobs:
         steps:
             - uses: actions/checkout@v3
             - uses: hashicorp/setup-terraform@v2
-              with:
-                  terraform_version: 1.0
-
             - name: Terraform Init
               run: terraform -chdir=terraform init
-
-            - name: Terraform Import (All Remaining)
-              run: |
-                  terraform -chdir=terraform import aws_iam_user.jobscraper_bot jobscraper_bot-crawler-bot || true
-                  terraform -chdir=terraform import aws_iam_role.lambda_exec_role jobscraper_lambda_role || true
-                  terraform -chdir=terraform import aws_s3_bucket.bronze jobscraper-bronze-data-8424560 || true
-                  terraform -chdir=terraform import aws_ecr_repository.scraper_repo job-scraper-lambda || true
-                  terraform -chdir=terraform import aws_iam_policy.scraper_s3_write_policy arn:aws:iam::730335315755:policy/jobscraper_s3_write_policy || true
-                  terraform -chdir=terraform import aws_lambda_function.kalibrr jobscraper-kalibrr || true
-                  terraform -chdir=terraform import aws_lambda_function.glints jobscraper-glints || true
-                  terraform -chdir=terraform import aws_lambda_function.jobstreet jobscraper-jobstreet || true
-
             - name: Terraform Apply Full
               run: terraform -chdir=terraform apply -auto-approve

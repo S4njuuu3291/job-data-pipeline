@@ -13,6 +13,7 @@ resource "aws_iam_user" "jobscraper_bot" {
 
 # NOTE: Access Key dikelola secara manual di AWS Console, bukan oleh Terraform
 # Ini untuk menghindari "LimitExceeded" error karena AWS hanya allow 2 access keys per user
+
 # Jika perlu access key baru, buat manually di IAM Console dan masukkan ke GitHub Secrets
 # resource "aws_iam_access_key" "jobscraper_bot" {
 #   user = aws_iam_user.jobscraper_bot.name
@@ -117,8 +118,8 @@ resource "aws_lambda_function" "kalibrr" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -147,8 +148,8 @@ resource "aws_lambda_function" "glints" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -177,8 +178,8 @@ resource "aws_lambda_function" "jobstreet" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -237,24 +238,24 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
 # =========================================================
 
 resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.kalibrr.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_glints" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.glints.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.jobstreet.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 # Rules jam 5 pagi WIB (22 UTC) setiap hari
@@ -265,19 +266,132 @@ resource "aws_cloudwatch_event_rule" "daily_scrape" {
 
 # Target
 resource "aws_cloudwatch_event_target" "kalibrr_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerKalibrrLambda"
   arn       = aws_lambda_function.kalibrr.arn
 }
 
 resource "aws_cloudwatch_event_target" "glints_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerGlintsLambda"
   arn       = aws_lambda_function.glints.arn
 }
 
 resource "aws_cloudwatch_event_target" "jobstreet_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerJobstreetLambda"
   arn       = aws_lambda_function.jobstreet.arn
+}
+
+# =========================================================
+#                    GLUE DATA CATALOG
+# =========================================================
+
+# Database metadata
+resource "aws_glue_catalog_database" "jobscraper_db" {
+  name        = "jobscraper_db"
+  description = "Glue Catalog Database untuk Job Scraper Pipeline"
+}
+
+# IAM Role untuk Glue Crawler
+resource "aws_iam_role" "glue_role" {
+  name = "jobscraper_glue_crawler_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "glue.amazonaws.com" }
+    }]
+  })
+}
+
+# Attach policy standar ke Glue Role
+resource "aws_iam_role_policy_attachment" "glue_service_role" {
+  role       = aws_iam_role.glue_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+# Custom policy untuk akses S3 bucket
+resource "aws_iam_policy" "glue_s3_read" {
+  name        = "jobscraper_glue_s3_read_policy"
+  description = "Read access untuk Glue Crawler ke S3 bucket"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:ListBucket",
+        "s3:GetObject",
+      ]
+      Resource = [
+        aws_s3_bucket.bronze.arn,
+      "${aws_s3_bucket.bronze.arn}/*"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "glue_s3_read_attach" {
+  role       = aws_iam_role.glue_role.name
+  policy_arn = aws_iam_policy.glue_s3_read.arn
+}
+
+resource "aws_glue_catalog_table" "bronze_table" {
+  name          = "jobscraper_bronze_table"
+  database_name = aws_glue_catalog_database.jobscraper_db.name
+  table_type    = "EXTERNAL_TABLE"
+
+  parameters = {
+    "classification" = "parquet"
+    "typeOfData"     = "file"
+  }
+
+  storage_descriptor {
+    location      = "s3://${aws_s3_bucket.bronze.id}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      parameters = {
+        "serialization.format" = "1"
+      }
+    }
+
+    columns {
+      name = "job_id"
+      type = "string"
+    }
+    columns {
+      name = "job_title"
+      type = "string"
+    }
+    columns {
+      name = "company_name"
+      type = "string"
+    }
+    columns {
+      name = "location"
+      type = "string"
+    }
+    columns {
+      name = "job_url"
+      type = "string"
+    }
+    columns {
+      name = "scraped_at"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "platform"
+    type = "string"
+  }
+
+  partition_keys {
+    name = "ingestion_date"
+    type = "string"
+  }
 }
