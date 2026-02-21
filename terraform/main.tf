@@ -118,8 +118,8 @@ resource "aws_lambda_function" "kalibrr" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -148,8 +148,8 @@ resource "aws_lambda_function" "glints" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -178,8 +178,8 @@ resource "aws_lambda_function" "jobstreet" {
   package_type  = "Image"
   architectures = ["x86_64"]
   image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
-  
-  publish       = false 
+
+  publish = false
 
   # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
@@ -238,24 +238,24 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
 # =========================================================
 
 resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.kalibrr.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_glints" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.glints.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
-  statement_id = "AllowExecutionFromEventBridge"
-  action       = "lambda:InvokeFunction"
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.jobstreet.function_name
-  principal    = "events.amazonaws.com"
+  principal     = "events.amazonaws.com"
 }
 
 # Rules jam 5 pagi WIB (22 UTC) setiap hari
@@ -266,19 +266,19 @@ resource "aws_cloudwatch_event_rule" "daily_scrape" {
 
 # Target
 resource "aws_cloudwatch_event_target" "kalibrr_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerKalibrrLambda"
   arn       = aws_lambda_function.kalibrr.arn
 }
 
 resource "aws_cloudwatch_event_target" "glints_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerGlintsLambda"
   arn       = aws_lambda_function.glints.arn
 }
 
 resource "aws_cloudwatch_event_target" "jobstreet_target" {
-  rule     = aws_cloudwatch_event_rule.daily_scrape.name
+  rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerJobstreetLambda"
   arn       = aws_lambda_function.jobstreet.arn
 }
@@ -289,7 +289,7 @@ resource "aws_cloudwatch_event_target" "jobstreet_target" {
 
 # Database metadata
 resource "aws_glue_catalog_database" "jobscraper_db" {
-  name = "jobscraper_db"
+  name        = "jobscraper_db"
   description = "Glue Catalog Database untuk Job Scraper Pipeline"
 }
 
@@ -315,7 +315,7 @@ resource "aws_iam_role_policy_attachment" "glue_service_role" {
 
 # Custom policy untuk akses S3 bucket
 resource "aws_iam_policy" "glue_s3_read" {
-  name       = "jobscraper_glue_s3_read_policy"
+  name        = "jobscraper_glue_s3_read_policy"
   description = "Read access untuk Glue Crawler ke S3 bucket"
   policy = jsonencode({
     Version = "2012-10-17"
@@ -326,8 +326,8 @@ resource "aws_iam_policy" "glue_s3_read" {
         "s3:GetObject",
       ]
       Resource = [
-          aws_s3_bucket.bronze.arn,
-          "${aws_s3_bucket.bronze.arn}/*"]
+        aws_s3_bucket.bronze.arn,
+      "${aws_s3_bucket.bronze.arn}/*"]
     }]
   })
 }
@@ -337,24 +337,61 @@ resource "aws_iam_role_policy_attachment" "glue_s3_read_attach" {
   policy_arn = aws_iam_policy.glue_s3_read.arn
 }
 
-# Glue Crawler
-resource "aws_glue_crawler" "bronze_crawler" {
-  name = "jobscraper_bronze_crawler"
+resource "aws_glue_catalog_table" "bronze_table" {
+  name          = "jobscraper_bronze_table"
   database_name = aws_glue_catalog_database.jobscraper_db.name
-  role = aws_iam_role.glue_role.arn
+  table_type    = "EXTERNAL_TABLE"
 
-  s3_target {
-    path = "s3://${aws_s3_bucket.bronze.id}/"
+  parameters = {
+    "classification" = "parquet"
+    "typeOfData"     = "file"
   }
 
-  configuration = jsonencode({
-    Version = 1.0
-    CrawlerOutput = {
-      Partitions = {
-        AddOrUpdateBehavior = "InheritFromTable"
+  storage_descriptor {
+    location      = "s3://${aws_s3_bucket.bronze.id}/"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      parameters = {
+        "serialization.format" = "1"
       }
     }
-  })
 
-  schedule = "cron(0 23 * * ? *)" # Setelah Lambda selesai, jam 6 pagi WIB (23 UTC)
+    columns {
+      name = "job_id"
+      type = "string"
+    }
+    columns {
+      name = "job_title"
+      type = "string"
+    }
+    columns {
+      name = "company_name"
+      type = "string"
+    }
+    columns {
+      name = "location"
+      type = "string"
+    }
+    columns {
+      name = "job_url"
+      type = "string"
+    }
+    columns {
+      name = "scraped_at"
+      type = "string"
+    }
+  }
+
+  partition_keys {
+    name = "platform"
+    type = "string"
+  }
+
+  partition_keys {
+    name = "ingestion_date"
+    type = "string"
+  }
 }
