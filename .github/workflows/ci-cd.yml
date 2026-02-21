@@ -72,6 +72,8 @@ jobs:
               uses: docker/build-push-action@v4
               with:
                   context: .
+                  provenance: false
+                  platforms: linux/amd64
                   push: true
                   tags: ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
                   cache-from: type=gha
