@@ -171,6 +171,7 @@ resource "aws_lambda_function" "kalibrr" {
     variables = {
       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+      SCRAPE_KEYWORDS          = "data-engineer-intern,etl-developer-intern,big-data-intern,bi-engineer-intern"
     }
   }
 
@@ -204,6 +205,7 @@ resource "aws_lambda_function" "glints" {
     variables = {
       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+      SCRAPE_KEYWORDS          = "data+engineer+intern,etl+developer+intern,big+data+intern,bi+engineer+intern"
     }
   }
 
@@ -237,6 +239,7 @@ resource "aws_lambda_function" "jobstreet" {
     variables = {
       PLAYWRIGHT_BROWSERS_PATH = "/opt/pw-browsers"
       AWS_S3_BUCKET_NAME       = aws_s3_bucket.bronze.id
+      SCRAPE_KEYWORDS          = "data-engineer-intern,etl-developer-intern,big-data-intern,bi-engineer-intern"
     }
   }
 
