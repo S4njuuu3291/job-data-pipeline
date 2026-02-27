@@ -1,8 +1,8 @@
-name: Continuous Integration & Continuous Deployment
+name: Continuous Deployment
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main]
     paths:
       - "src/**"
       - "terraform/**"
@@ -10,27 +10,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  test: # ← tambahkan ini sebagai job pertama
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
+          cache: "poetry"
       - name: Install dependencies
         run: |
-          python -m pip install poetry
-          poetry install
+          pip install poetry
+          poetry install --with dev
       - name: Run tests
         run: poetry run pytest --tb=short
 
   terraform_infra:
     name: "Provision Storage & IAM"
     runs-on: ubuntu-latest
-    needs: [test]
     environment: main_env
+    needs: [test]
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
@@ -38,8 +38,8 @@ jobs:
       TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
       TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: hashicorp/setup-terraform@v2
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - name: Terraform Init
         run: terraform -chdir=terraform init
       - name: Terraform Apply Core
@@ -56,11 +56,11 @@ jobs:
     needs: [terraform_infra]
     environment: main_env
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Docker Buildx # FIX: Penting untuk caching
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
@@ -91,8 +91,8 @@ jobs:
       TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
       TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: hashicorp/setup-terraform@v2
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - name: Terraform Init
         run: terraform -chdir=terraform init
       - name: Terraform Apply Full

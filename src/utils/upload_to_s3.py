@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 load_dotenv()
 
+
 def upload_to_s3(df: pd.DataFrame, platform: str):
     s3: S3Client = boto3.client("s3")
     bucket_name = os.getenv("AWS_S3_BUCKET_NAME")
@@ -21,14 +22,18 @@ def upload_to_s3(df: pd.DataFrame, platform: str):
     now = now_wib()
     date_str = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%H%M%S")
-    
+
     # check if already exist object in ingestion_date, if exist, replace with new file, if not exist, create new file
-    
-    existing_objects = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"platform={platform}/ingestion_date={date_str}/")
+
+    existing_objects = s3.list_objects_v2(
+        Bucket=bucket_name, Prefix=f"platform={platform}/ingestion_date={date_str}/"
+    )
     if existing_objects.get("KeyCount", 0) > 0:
         for obj in existing_objects["Contents"]:
             s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
-        print(f"🧹 Menghapus {existing_objects['KeyCount']} file lama di folder ingestion_date={date_str}")
+        print(
+            f"🧹 Menghapus {existing_objects['KeyCount']} file lama di folder ingestion_date={date_str}"
+        )
 
     file_key = (
         f"platform={platform}/ingestion_date={date_str}/{platform}_{timestamp}.parquet"

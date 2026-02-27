@@ -2,7 +2,6 @@
 async def jobscraper_glints(url: str, headless: bool = True):
     # Import HANYA saat fungsi dipanggil (lazy loading)
     from playwright.async_api import Browser, BrowserContext, async_playwright
-    from datetime import datetime
     from src.utils.scraper_utils import (
         create_browser,
         create_stealth_context,
