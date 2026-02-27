@@ -9,6 +9,7 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
         fast_human_scroll,
     )
     from src.utils.keywords import ALLOWED, BLOCKED
+    from src.utils.time_utils import now_wib
     from tenacity import retry, stop_after_attempt, wait_exponential
     import hashlib
     import asyncio
@@ -58,7 +59,7 @@ async def jobscraper_jobstreet(url: str, headless: bool = True):
 
             # Mengincar atribut data-automation yang sangat stabil di JobStreet
             job_cards = await page.locator('article[data-automation="normalJob"]').all()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = now_wib().strftime("%Y%m%d_%H%M%S")
 
             for card in job_cards:
                 try:

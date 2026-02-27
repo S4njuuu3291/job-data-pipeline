@@ -9,6 +9,7 @@ async def jobscraper_glints(url: str, headless: bool = True):
         fast_human_scroll,
     )
     from src.utils.keywords import ALLOWED, BLOCKED
+    from src.utils.time_utils import now_wib
     from tenacity import (
         retry,
         stop_after_attempt,
@@ -61,8 +62,7 @@ async def jobscraper_glints(url: str, headless: bool = True):
             await page.route("**/*", route_handler)
             print("Selective resource blocking enabled")
 
-            # Inisialisasi variabel di luar loop/navigasi agar aman dari UnboundLocalError
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = now_wib().strftime("%Y%m%d_%H%M%S")
             filename = f"glints_raw_{timestamp}.json"
             results = []
 
