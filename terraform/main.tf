@@ -1,4 +1,25 @@
 # =========================================================
+#              TERRAFORM STATE LOCKING (DYNAMODB)
+# =========================================================
+
+resource "aws_dynamodb_table" "terraform_lock" {
+  name           = "jobscraper-terraform-lock"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "StateLocking"
+  }
+}
+
+# =========================================================
 #                   SQS DEAD LETTER QUEUE
 # =========================================================
 
