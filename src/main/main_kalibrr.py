@@ -44,8 +44,10 @@ async def run_kalibrr_pipeline(keywords: list[str]):
             print("--- 🏆 Pipeline Selesai dengan Sukses ---")
         else:
             print("--- ⚠️ Pipeline Selesai dengan Error di S3 ---")
+        return len(df_validated) if success else 0
     except Exception as e:
         print(f"❌ Pipeline Berhenti di tahap Validasi/Upload: {e}")
+        raise
 
 
 if __name__ == "__main__":
