@@ -3,11 +3,13 @@ import os
 
 # Daftar keyword yang ingin kamu scrape secara rutin
 
+
 def _get_keywords(default: list[str]) -> list[str]:
     env_keywords = os.getenv("SCRAPE_KEYWORDS")
     if env_keywords:
         return [kw.strip() for kw in env_keywords.split(",") if kw.strip()]
     return default
+
 
 DEFAULT_KEYWORDS = [
     "data-engineer-intern",
