@@ -1,11 +1,63 @@
 # =========================================================
+#              GITHUB OIDC PROVIDER FOR CI/CD
+# =========================================================
+
+data "tls_certificate" "github" {
+  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
+}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "GitHubOIDC"
+  }
+}
+
+resource "aws_iam_role" "github_actions_role" {
+  name = "jobscraper-github-actions-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:S4njuuu3291/job-data-pipeline:*"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "GitHubActionsRole"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_admin" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+# =========================================================
 #              TERRAFORM STATE LOCKING (DYNAMODB)
 # =========================================================
 
 resource "aws_dynamodb_table" "terraform_lock" {
-  name           = "jobscraper-terraform-lock"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "LockID"
+  name         = "jobscraper-terraform-lock"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
 
   attribute {
     name = "LockID"
