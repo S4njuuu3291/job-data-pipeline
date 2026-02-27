@@ -44,8 +44,10 @@ async def run_jobstreet_pipeline(keywords: list):
             print("--- Pipeline Completed Successfully ---")
         else:
             print("--- Pipeline Completed with S3 Error ---")
+        return len(df_validated) if success else 0
     except Exception as e:
         print(f"ERROR: Pipeline stopped at Validation/Upload: {e}")
+        raise
 
 
 if __name__ == "__main__":

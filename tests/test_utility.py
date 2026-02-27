@@ -142,8 +142,10 @@ class TestUploadToS3:
     @patch("src.utils.upload_to_s3.boto3.client")
     def test_upload_to_s3_success(self, mock_boto3_client, sample_df):
         mock_s3_client = MagicMock()
-        mock_boto3_client.return_value = mock_s3_client
-
+        mock_boto3_client.return_value = (
+            mock_s3_client  # Mock list_objects_v2 to return no existing objects
+        )
+        mock_s3_client.list_objects_v2.return_value = {"KeyCount": 0}
         result = upload_to_s3(sample_df, "kalibrr")
 
         assert result
@@ -164,6 +166,8 @@ class TestUploadToS3:
     def test_upload_to_s3_failure(self, mock_boto3_client, sample_df):
         mock_s3_client = MagicMock()
         mock_boto3_client.return_value = mock_s3_client
+        # Mock list_objects_v2 to return no existing objects
+        mock_s3_client.list_objects_v2.return_value = {"KeyCount": 0}
         mock_s3_client.put_object.side_effect = Exception("S3 upload failed")
 
         result = upload_to_s3(sample_df, "kalibrr")
@@ -174,6 +178,10 @@ class TestUploadToS3:
     def test_file_path_format(self, mock_boto3_client, sample_df):
         mock_s3_client = MagicMock()
         mock_boto3_client.return_value = mock_s3_client
+        # Mock list_objects_v2 to return no existing objects
+        mock_s3_client.list_objects_v2.return_value = {"KeyCount": 0}
+
+        upload_to_s3(sample_df, "kalibrr")
 
         call_args = mock_s3_client.put_object.call_args
         file_key = call_args[1]["Key"]

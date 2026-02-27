@@ -24,8 +24,17 @@ def kalibrr_handler(event, context):
     print("Memicu Lambda Kalibrr...")
     # asyncio.run digunakan karena Lambda adalah fungsi sinkronous
     # sedangkan scraper kita asinkronous (async/await)
-    asyncio.run(run_kalibrr_pipeline(DEFAULT_KEYWORDS))
-    return {"statusCode": 200, "body": "Kalibrr scrape sukses"}
+    try:
+        result = asyncio.run(run_kalibrr_pipeline(DEFAULT_KEYWORDS))
+        if not result:
+            raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
+        return {
+            "statusCode": 200,
+            "body": f"Kalibrr scrape sukses, {result} data berhasil diproses",
+        }
+    except Exception as e:
+        print(f"Error di Lambda Kalibrr: {e}")
+        raise
 
 
 # Handler untuk Glints
@@ -34,8 +43,17 @@ def glints_handler(event, context):
     from src.main.main_glints import run_glints_pipeline
 
     print("Memicu Lambda Glints...")
-    asyncio.run(run_glints_pipeline(DEFAULT_KEYWORDS_GLINTS))
-    return {"statusCode": 200, "body": "Glints scrape sukses"}
+    try:
+        result = asyncio.run(run_glints_pipeline(DEFAULT_KEYWORDS_GLINTS))
+        if not result:
+            raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
+        return {
+            "statusCode": 200,
+            "body": f"Glints scrape sukses, {result} data berhasil diproses",
+        }
+    except Exception as e:
+        print(f"Error di Lambda Glints: {e}")
+        raise
 
 
 # Handler untuk JobStreet
@@ -44,5 +62,14 @@ def jobstreet_handler(event, context):
     from src.main.main_jobstreet import run_jobstreet_pipeline
 
     print("Memicu Lambda JobStreet...")
-    asyncio.run(run_jobstreet_pipeline(DEFAULT_KEYWORDS))
-    return {"statusCode": 200, "body": "JobStreet scrape sukses"}
+    try:
+        result = asyncio.run(run_jobstreet_pipeline(DEFAULT_KEYWORDS))
+        if not result:
+            raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
+        return {
+            "statusCode": 200,
+            "body": f"JobStreet scrape sukses, {result} data berhasil diproses",
+        }
+    except Exception as e:
+        print(f"Error di Lambda JobStreet: {e}")
+        raise
