@@ -2,15 +2,18 @@ import pytest
 import pandera.pandas as pa
 from src.utils.data_validator import validate_job_data
 from src.utils.data_validator import job_schema
-from src.utils.scraper_utils import DEVICE_PROFILES, create_stealth_context, fast_human_scroll, human_delay
+from src.utils.scraper_utils import (
+    DEVICE_PROFILES,
+    human_delay,
+)
 from src.utils.upload_to_s3 import upload_to_s3
-from playwright.async_api import Browser, BrowserContext, Page
 from unittest.mock import patch, MagicMock
 import pandas as pd
 
 # ===============================================================================
 #                              DATA VALIDATOR TESTS
 # ===============================================================================
+
 
 class TestDataValidator:
     def test_valid_data(self):
@@ -21,7 +24,7 @@ class TestDataValidator:
             "location": ["Jakarta", "Bandung"],
             "job_url": ["http://example.com/job1", "http://example.com/job2"],
             "platform": ["kalibrr", "jobstreet"],
-            "scraped_at": ["2024-06-01T12:00:00Z", "2024-06-01T12:05:00Z"]
+            "scraped_at": ["2024-06-01T12:00:00Z", "2024-06-01T12:05:00Z"],
         }
 
         df = pd.DataFrame(data)
@@ -37,7 +40,7 @@ class TestDataValidator:
             "location": ["Jakarta"],
             "job_url": ["http://example.com/job1"],
             "platform": ["invalid_platform"],
-            "scraped_at": ["2024-06-01T12:00:00Z"]
+            "scraped_at": ["2024-06-01T12:00:00Z"],
         }
 
         df = pd.DataFrame(data)
@@ -52,13 +55,13 @@ class TestDataValidator:
             "location": ["Jakarta"],
             "job_url": ["http://example.com/job1"],
             # "platform" column is missing
-            "scraped_at": ["2024-06-01T12:00:00Z"]
+            "scraped_at": ["2024-06-01T12:00:00Z"],
         }
 
         df = pd.DataFrame(data)
         with pytest.raises(pa.errors.SchemaError):
             validate_job_data(df)
-    
+
     def test_duplicate_job_id(self):
         data = {
             "job_id": ["1", "1"],  # Duplicate job_id
@@ -67,22 +70,24 @@ class TestDataValidator:
             "location": ["Jakarta", "Bandung"],
             "job_url": ["http://example.com/job1", "http://example.com/job2"],
             "platform": ["kalibrr", "jobstreet"],
-            "scraped_at": ["2024-06-01T12:00:00Z", "2024-06-01T12:05:00Z"]
+            "scraped_at": ["2024-06-01T12:00:00Z", "2024-06-01T12:05:00Z"],
         }
 
         df = pd.DataFrame(data)
         with pytest.raises(pa.errors.SchemaError):
             validate_job_data(df)
-    
+
     def test_empty_dataframe(self):
         df = pd.DataFrame(columns=job_schema.columns)
         validated_df = validate_job_data(df)
 
         assert len(validated_df) == 0
 
+
 # ===============================================================================
 #                              SCRAPER UTILS TESTS
 # ===============================================================================
+
 
 class TestScraperUtils:
     @pytest.mark.asyncio
@@ -94,8 +99,10 @@ class TestScraperUtils:
         end_time = pd.Timestamp.now()
         elapsed_ms = (end_time - start_time).total_seconds() * 1000
 
-        assert min_ms <= elapsed_ms <= max_ms + 50  # Allow some buffer for execution time
-    
+        assert (
+            min_ms <= elapsed_ms <= max_ms + 50
+        )  # Allow some buffer for execution time
+
     def test_device_profiles(self):
         for profile_name, profile in DEVICE_PROFILES.items():
             assert "user_agent" in profile
@@ -103,7 +110,7 @@ class TestScraperUtils:
             assert "device_scale_factor" in profile
             assert "is_mobile" in profile
             assert "has_touch" in profile
-        
+
     def test_device_profiles_viewport(self):
         for profile_name, profile in DEVICE_PROFILES.items():
             viewport = profile["viewport"]
@@ -112,21 +119,25 @@ class TestScraperUtils:
             assert isinstance(viewport["width"], int)
             assert isinstance(viewport["height"], int)
 
+
 # ===============================================================================
 #                              UPLOAD TO S3 TESTS
 # ===============================================================================
 
+
 class TestUploadToS3:
     @pytest.fixture
     def sample_df(self):
-        return pd.DataFrame({
-            "job_id": ["1", "2"],
-            "job_title": ["Software Engineer", "Data Scientist"],
-            "company_name": ["Company A", "Company B"],
-            "location": ["Jakarta", "Bandung"],
-            "job_url": ["http://example.com/job1", "http://example.com/job2"],
-        })
-    
+        return pd.DataFrame(
+            {
+                "job_id": ["1", "2"],
+                "job_title": ["Software Engineer", "Data Scientist"],
+                "company_name": ["Company A", "Company B"],
+                "location": ["Jakarta", "Bandung"],
+                "job_url": ["http://example.com/job1", "http://example.com/job2"],
+            }
+        )
+
     @patch.dict("os.environ", {"AWS_S3_BUCKET_NAME": "test-bucket"})
     @patch("src.utils.upload_to_s3.boto3.client")
     def test_upload_to_s3_success(self, mock_boto3_client, sample_df):
@@ -135,7 +146,7 @@ class TestUploadToS3:
 
         result = upload_to_s3(sample_df, "kalibrr")
 
-        assert result == True
+        assert result
         assert mock_s3_client.put_object.called
 
         args, kwargs = mock_s3_client.put_object.call_args
@@ -156,15 +167,13 @@ class TestUploadToS3:
         mock_s3_client.put_object.side_effect = Exception("S3 upload failed")
 
         result = upload_to_s3(sample_df, "kalibrr")
-        assert result == False
+        assert not result
 
     @patch.dict("os.environ", {"AWS_S3_BUCKET_NAME": "test-bucket"})
     @patch("src.utils.upload_to_s3.boto3.client")
     def test_file_path_format(self, mock_boto3_client, sample_df):
         mock_s3_client = MagicMock()
         mock_boto3_client.return_value = mock_s3_client
-
-        result = upload_to_s3(sample_df, "kalibrr")
 
         call_args = mock_s3_client.put_object.call_args
         file_key = call_args[1]["Key"]
