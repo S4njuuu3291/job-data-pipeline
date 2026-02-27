@@ -1,98 +1,99 @@
 name: Continuous Deployment
 
 on:
-    push:
-        branches: [main]
-        paths:
-            - "src/**"
-            - "terraform/**"
-            - "Dockerfile"
-    workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "terraform/**"
+      - "Dockerfile"
+  workflow_dispatch:
 
 jobs:
-    test: # ← tambahkan ini sebagai job pertama
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-            - name: Set up python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
-                  cache: "poetry"
-            - name: Install dependencies
-              run: |
-                  pip install poetry
-                  poetry install --with dev
-            - name: Run tests
-              run: poetry run pytest --tb=short
+  test: # ← tambahkan ini sebagai job pertama
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install --with dev
+      - name: Run tests
+        run: poetry run pytest --tb=short
 
-    terraform_infra:
-        name: "Provision Storage & IAM"
-        runs-on: ubuntu-latest
-        environment: main_env
-        env:
-            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-            AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-            AWS_DEFAULT_REGION: "ap-southeast-1"
-            TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-            TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-        steps:
-            - uses: actions/checkout@v4
-            - uses: hashicorp/setup-terraform@v3
-            - name: Terraform Init
-              run: terraform -chdir=terraform init
-            - name: Terraform Apply Core
-              run: |
-                  terraform -chdir=terraform apply \
-                    -target=aws_iam_user.jobscraper_bot \
-                    -target=aws_ecr_repository.scraper_repo \
-                    -target=aws_s3_bucket.bronze \
-                    -auto-approve
+  terraform_infra:
+    name: "Provision Storage & IAM"
+    runs-on: ubuntu-latest
+    environment: main_env
+    needs: [test]
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+      AWS_DEFAULT_REGION: "ap-southeast-1"
+      TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+      TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+      - name: Terraform Apply Core
+        run: |
+          terraform -chdir=terraform apply \
+            -target=aws_iam_user.jobscraper_bot \
+            -target=aws_ecr_repository.scraper_repo \
+            -target=aws_s3_bucket.bronze \
+            -auto-approve
 
-    build_and_push:
-        name: "Build & Push Docker Image"
-        runs-on: ubuntu-latest
-        needs: [terraform_infra]
-        environment: main_env
-        steps:
-            - uses: actions/checkout@v4
-            - name: Set up Docker Buildx # FIX: Penting untuk caching
-              uses: docker/setup-buildx-action@v3
-            - name: Configure AWS credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-                  aws-region: "ap-southeast-1"
-            - name: Login to Amazon ECR
-              id: login-ecr
-              uses: aws-actions/amazon-ecr-login@v1
-            - name: Build and push # FIX: Menggunakan GHA Cache
-              uses: docker/build-push-action@v4
-              with:
-                  context: .
-                  provenance: false
-                  platforms: linux/amd64
-                  push: true
-                  tags: ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+  build_and_push:
+    name: "Build & Push Docker Image"
+    runs-on: ubuntu-latest
+    needs: [terraform_infra]
+    environment: main_env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx # FIX: Penting untuk caching
+        uses: docker/setup-buildx-action@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: "ap-southeast-1"
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      - name: Build and push # FIX: Menggunakan GHA Cache
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          provenance: false
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/job-scraper-lambda:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    terraform_lambda:
-        name: "Finalize Deployment"
-        runs-on: ubuntu-latest
-        needs: [build_and_push]
-        environment: main_env
-        env:
-            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
-            AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-            AWS_DEFAULT_REGION: "ap-southeast-1"
-            TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
-            TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
-        steps:
-            - uses: actions/checkout@v4
-            - uses: hashicorp/setup-terraform@v3
-            - name: Terraform Init
-              run: terraform -chdir=terraform init
-            - name: Terraform Apply Full
-              run: terraform -chdir=terraform apply -auto-approve
+  terraform_lambda:
+    name: "Finalize Deployment"
+    runs-on: ubuntu-latest
+    needs: [build_and_push]
+    environment: main_env
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+      AWS_DEFAULT_REGION: "ap-southeast-1"
+      TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY }}
+      TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+      - name: Terraform Apply Full
+        run: terraform -chdir=terraform apply -auto-approve
