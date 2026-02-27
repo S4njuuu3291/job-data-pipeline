@@ -1,6 +1,16 @@
 # Lazy import untuk handler (tanpa import top-level yang berat)
+import os
 
 # Daftar keyword yang ingin kamu scrape secara rutin
+
+
+def _get_keywords(default: list[str]) -> list[str]:
+    env_keywords = os.getenv("SCRAPE_KEYWORDS")
+    if env_keywords:
+        return [kw.strip() for kw in env_keywords.split(",") if kw.strip()]
+    return default
+
+
 DEFAULT_KEYWORDS = [
     "data-engineer-intern",
     "etl-developer-intern",
@@ -24,8 +34,9 @@ def kalibrr_handler(event, context):
     print("Memicu Lambda Kalibrr...")
     # asyncio.run digunakan karena Lambda adalah fungsi sinkronous
     # sedangkan scraper kita asinkronous (async/await)
+    keywords = _get_keywords(DEFAULT_KEYWORDS)
     try:
-        result = asyncio.run(run_kalibrr_pipeline(DEFAULT_KEYWORDS))
+        result = asyncio.run(run_kalibrr_pipeline(keywords))
         if not result:
             raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
         return {
@@ -43,8 +54,9 @@ def glints_handler(event, context):
     from src.main.main_glints import run_glints_pipeline
 
     print("Memicu Lambda Glints...")
+    keywords = _get_keywords(DEFAULT_KEYWORDS_GLINTS)
     try:
-        result = asyncio.run(run_glints_pipeline(DEFAULT_KEYWORDS_GLINTS))
+        result = asyncio.run(run_glints_pipeline(keywords))
         if not result:
             raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
         return {
@@ -62,8 +74,9 @@ def jobstreet_handler(event, context):
     from src.main.main_jobstreet import run_jobstreet_pipeline
 
     print("Memicu Lambda JobStreet...")
+    keywords = _get_keywords(DEFAULT_KEYWORDS)
     try:
-        result = asyncio.run(run_jobstreet_pipeline(DEFAULT_KEYWORDS))
+        result = asyncio.run(run_jobstreet_pipeline(keywords))
         if not result:
             raise RuntimeError("Pipeline selesai tapi 0 data berhasil diproses")
         return {
