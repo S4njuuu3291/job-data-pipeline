@@ -1,4 +1,33 @@
 # =========================================================
+#                   SQS DEAD LETTER QUEUE
+# =========================================================
+
+resource "aws_sqs_queue" "scraper_dlq" {
+  name                      = "jobscraper-dlq"
+  message_retention_seconds = 1209600 # 14 hari
+  tags = {
+    Project = "Job-Scraper"
+    Purpose = "DeadLetterQueue"
+  }
+}
+
+# CloudWatch Alarm: Berbunyi jika ada pesan masuk ke DLQ (indikasi ada scraper gagal)
+resource "aws_cloudwatch_metric_alarm" "dlq_alarm" {
+  alarm_name          = "jobscraper-dlq-not-empty"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 300 # Cek tiap 5 menit
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Ada Lambda scraper yang gagal dan masuk ke Dead Letter Queue"
+  dimensions = {
+    QueueName = aws_sqs_queue.scraper_dlq.name
+  }
+}
+
+# =========================================================
 #                   IAM USER RESOURCE
 # =========================================================
 
@@ -10,14 +39,6 @@ resource "aws_iam_user" "jobscraper_bot" {
     ManagedBy = "Terraform-Executor"
   }
 }
-
-# NOTE: Access Key dikelola secara manual di AWS Console, bukan oleh Terraform
-# Ini untuk menghindari "LimitExceeded" error karena AWS hanya allow 2 access keys per user
-
-# Jika perlu access key baru, buat manually di IAM Console dan masukkan ke GitHub Secrets
-# resource "aws_iam_access_key" "jobscraper_bot" {
-#   user = aws_iam_user.jobscraper_bot.name
-# }
 
 resource "aws_iam_policy" "scraper_s3_write_policy" {
   name        = "jobscraper_s3_write_policy"
@@ -42,13 +63,26 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
   })
 }
 
+# Policy untuk mengizinkan Lambda mengirim pesan ke SQS DLQ
+resource "aws_iam_policy" "lambda_dlq_policy" {
+  name = "jobscraper_lambda_dlq_policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage"]
+      Resource = aws_sqs_queue.scraper_dlq.arn
+    }]
+  })
+}
+
 resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
   user       = aws_iam_user.jobscraper_bot.name
   policy_arn = aws_iam_policy.scraper_s3_write_policy.arn
 }
 
 # =========================================================
-#                    BUCKET RESOURCE
+#                     BUCKET RESOURCE
 # =========================================================
 
 resource "aws_s3_bucket" "bronze" {
@@ -72,7 +106,7 @@ resource "aws_s3_bucket_public_access_block" "bronze" {
 }
 
 # =========================================================
-#                    ECR REPOSITORY
+#                     ECR REPOSITORY
 # =========================================================
 
 resource "aws_ecr_repository" "scraper_repo" {
@@ -108,7 +142,7 @@ resource "aws_ecr_lifecycle_policy" "cleanup" {
 }
 
 # =========================================================
-#                    LAMBDA RESOURCE
+#                     LAMBDA RESOURCE
 # =========================================================
 
 # Resource untuk Kalibrr
@@ -121,9 +155,12 @@ resource "aws_lambda_function" "kalibrr" {
 
   publish = false
 
-  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
     ignore_changes = [publish]
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.scraper_dlq.arn
   }
 
   image_config {
@@ -151,9 +188,12 @@ resource "aws_lambda_function" "glints" {
 
   publish = false
 
-  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
     ignore_changes = [publish]
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.scraper_dlq.arn
   }
 
   image_config {
@@ -181,9 +221,12 @@ resource "aws_lambda_function" "jobstreet" {
 
   publish = false
 
-  # FIX: Mengatasi bug "Provider produced inconsistent final plan"
   lifecycle {
     ignore_changes = [publish]
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.scraper_dlq.arn
   }
 
   image_config {
@@ -233,6 +276,12 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Attach DLQ policy ke role Lambda
+resource "aws_iam_role_policy_attachment" "lambda_dlq" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.lambda_dlq_policy.arn
+}
+
 # =========================================================
 #               EVENTBRIDGE SCHEDULER (CRON)
 # =========================================================
@@ -258,13 +307,11 @@ resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
   principal     = "events.amazonaws.com"
 }
 
-# Rules jam 5 pagi WIB (22 UTC) setiap hari
 resource "aws_cloudwatch_event_rule" "daily_scrape" {
   name                = "daily_scrape_rule"
   schedule_expression = "cron(0 22 * * ? *)"
 }
 
-# Target
 resource "aws_cloudwatch_event_target" "kalibrr_target" {
   rule      = aws_cloudwatch_event_rule.daily_scrape.name
   target_id = "TriggerKalibrrLambda"
@@ -287,13 +334,11 @@ resource "aws_cloudwatch_event_target" "jobstreet_target" {
 #                    GLUE DATA CATALOG
 # =========================================================
 
-# Database metadata
 resource "aws_glue_catalog_database" "jobscraper_db" {
   name        = "jobscraper_db"
   description = "Glue Catalog Database untuk Job Scraper Pipeline"
 }
 
-# IAM Role untuk Glue Crawler
 resource "aws_iam_role" "glue_role" {
   name = "jobscraper_glue_crawler_role"
 
@@ -307,13 +352,11 @@ resource "aws_iam_role" "glue_role" {
   })
 }
 
-# Attach policy standar ke Glue Role
 resource "aws_iam_role_policy_attachment" "glue_service_role" {
   role       = aws_iam_role.glue_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
 
-# Custom policy untuk akses S3 bucket
 resource "aws_iam_policy" "glue_s3_read" {
   name        = "jobscraper_glue_s3_read_policy"
   description = "Read access untuk Glue Crawler ke S3 bucket"
@@ -327,7 +370,8 @@ resource "aws_iam_policy" "glue_s3_read" {
       ]
       Resource = [
         aws_s3_bucket.bronze.arn,
-      "${aws_s3_bucket.bronze.arn}/*"]
+        "${aws_s3_bucket.bronze.arn}/*"
+      ]
     }]
   })
 }
