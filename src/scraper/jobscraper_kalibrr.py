@@ -81,7 +81,7 @@ async def jobscraper_kalibrr(url: str, headless: bool = True):
                 load_more_button = page.locator(button_selector)
 
                 if await load_more_button.is_visible():
-                    print(f"Klik Load More ke-{i+1}...")
+                    print(f"Klik Load More ke-{i + 1}...")
                     await load_more_button.scroll_into_view_if_needed()
                     await human_delay()
 
