@@ -4,14 +4,12 @@ import io
 import pandas as pd
 from dotenv import load_dotenv
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from src.utils.time_utils import now_wib
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
 load_dotenv()
-
 
 def upload_to_s3(df: pd.DataFrame, platform: str):
     s3: S3Client = boto3.client("s3")
@@ -20,11 +18,18 @@ def upload_to_s3(df: pd.DataFrame, platform: str):
     if not bucket_name:
         raise ValueError("AWS_S3_BUCKET_NAME environment variable not set")
 
-    # UTC+7 untuk konsistensi dengan waktu lokal Indonesia
-    now = datetime.now(ZoneInfo("Asia/Jakarta"))
+    now = now_wib()
     date_str = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%H%M%S")
     
+    # check if already exist object in ingestion_date, if exist, replace with new file, if not exist, create new file
+    
+    existing_objects = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"platform={platform}/ingestion_date={date_str}/")
+    if existing_objects.get("KeyCount", 0) > 0:
+        for obj in existing_objects["Contents"]:
+            s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
+        print(f"🧹 Menghapus {existing_objects['KeyCount']} file lama di folder ingestion_date={date_str}")
+
     file_key = (
         f"platform={platform}/ingestion_date={date_str}/{platform}_{timestamp}.parquet"
     )
