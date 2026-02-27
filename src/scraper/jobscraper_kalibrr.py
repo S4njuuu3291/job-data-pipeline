@@ -8,6 +8,7 @@ async def jobscraper_kalibrr(url: str, headless: bool = True):
         create_stealth_context,
         human_delay,
     )
+    from src.utils.time_utils import now_wib
     from src.utils.keywords import ALLOWED, BLOCKED
     from tenacity import retry, stop_after_attempt, wait_exponential
     import hashlib
@@ -95,7 +96,7 @@ async def jobscraper_kalibrr(url: str, headless: bool = True):
                 print("Selesai: Mencapai batas maksimal klik (limit keamanan).")
 
             job_cards = await page.locator("div.css-1otdiuc").all()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = now_wib().strftime("%Y%m%d_%H%M%S")
 
             for card in job_cards:
                 try:
@@ -137,7 +138,7 @@ async def jobscraper_kalibrr(url: str, headless: bool = True):
                             "location": location,
                             "job_url": full_url,
                             "platform": "kalibrr",
-                            "scraped_at": timestamp,  # Nanti pakai datetime.now()
+                            "scraped_at": timestamp,
                         }
                     )
 
