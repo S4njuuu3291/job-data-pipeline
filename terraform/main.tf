@@ -129,7 +129,7 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
       {
         Sid      = "AllowObjectReadWrite"
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject"]
+        Action   = ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
         Resource = ["${aws_s3_bucket.bronze.arn}/*"]
       }
     ]
@@ -359,51 +359,72 @@ resource "aws_iam_role_policy_attachment" "lambda_dlq" {
 }
 
 # =========================================================
-#               EVENTBRIDGE SCHEDULER (CRON)
+#           EVENTBRIDGE SCHEDULER (CRON) → STATE MACHINE
 # =========================================================
 
-resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.kalibrr.function_name
-  principal     = "events.amazonaws.com"
+# Event Rule untuk jam 9 pagi WIB (02:00 UTC)
+# Strategi: Capture postingan tadi malam + pagi, apply saat HR aktif
+resource "aws_cloudwatch_event_rule" "scrape_morning" {
+  name                = "jobscraper-schedule-morning"
+  schedule_expression = "cron(0 2 * * ? *)"
+  description         = "Trigger State Machine jam 09:00 WIB - Prime time HR activity (pagi)"
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_glints" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.glints.function_name
-  principal     = "events.amazonaws.com"
+resource "aws_cloudwatch_event_target" "scrape_morning_target" {
+  rule      = aws_cloudwatch_event_rule.scrape_morning.name
+  target_id = "TriggerStateMachineMorning"
+  arn       = aws_sfn_state_machine.joscraper_orchestrator.arn
+  role_arn  = aws_iam_role.eventbridge_role.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.jobstreet.function_name
-  principal     = "events.amazonaws.com"
+# Event Rule untuk jam 4 sore WIB (09:00 UTC)
+# Strategi: Capture postingan setelah makan siang, apply sebelum HR tutup laptop
+resource "aws_cloudwatch_event_rule" "scrape_evening" {
+  name                = "jobscraper-schedule-evening"
+  schedule_expression = "cron(0 9 * * ? *)"
+  description         = "Trigger State Machine jam 16:00 WIB - Sebelum HR tutup (sore)"
 }
 
-resource "aws_cloudwatch_event_rule" "daily_scrape" {
-  name                = "daily_scrape_rule"
-  schedule_expression = "cron(0 22 * * ? *)"
+resource "aws_cloudwatch_event_target" "scrape_evening_target" {
+  rule      = aws_cloudwatch_event_rule.scrape_evening.name
+  target_id = "TriggerStateMachineEvening"
+  arn       = aws_sfn_state_machine.joscraper_orchestrator.arn
+  role_arn  = aws_iam_role.eventbridge_role.arn
 }
 
-resource "aws_cloudwatch_event_target" "kalibrr_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerKalibrrLambda"
-  arn       = aws_lambda_function.kalibrr.arn
+# IAM Role untuk EventBridge
+resource "aws_iam_role" "eventbridge_role" {
+  name = "jobscraper_eventbridge_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+    }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "glints_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerGlintsLambda"
-  arn       = aws_lambda_function.glints.arn
+resource "aws_iam_policy" "eventbridge_state_machine_policy" {
+  name        = "jobscraper_eventbridge_state_machine_policy"
+  description = "Policy untuk EventBridge invoke State Machine"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "states:StartExecution"
+      ]
+      Resource = aws_sfn_state_machine.joscraper_orchestrator.arn
+    }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "jobstreet_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerJobstreetLambda"
-  arn       = aws_lambda_function.jobstreet.arn
+resource "aws_iam_role_policy_attachment" "eventbridge_state_machine_attach" {
+  role       = aws_iam_role.eventbridge_role.id
+  policy_arn = aws_iam_policy.eventbridge_state_machine_policy.arn
 }
 
 # =========================================================
@@ -513,5 +534,96 @@ resource "aws_glue_catalog_table" "bronze_table" {
   partition_keys {
     name = "ingestion_date"
     type = "string"
+  }
+}
+
+# =========================================================
+#               STATE MACHINE (STEP FUNCTIONS)
+# =========================================================
+
+resource "aws_iam_role" "step_functions_role" {
+  name = "jobscraper_step_functions_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_policy" "step_functions_policy" {
+  name        = "jobscraper_step_functions_policy"
+  description = "Policy untuk Step Functions invoke Lambda dan logging"
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowLambdaInvoke"
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = [
+          "${aws_lambda_function.kalibrr.arn}:*",
+          "${aws_lambda_function.glints.arn}:*",
+          "${aws_lambda_function.jobstreet.arn}:*"
+        ]
+      },
+      {
+        Sid    = "AllowCloudWatchLogging"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "step_functions_policy" {
+  role       = aws_iam_role.step_functions_role.id
+  policy_arn = aws_iam_policy.step_functions_policy.arn
+}
+
+# =========================================================
+#           CLOUDWATCH LOG GROUP STEP FUNCTIONS
+# =========================================================
+
+resource "aws_cloudwatch_log_group" "step_functions_logs" {
+  name              = "/aws/stepfunctions/jobscraper-orchestrator"
+  retention_in_days = 7
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "StepFunctionsLogging"
+  }
+}
+
+resource "aws_sfn_state_machine" "joscraper_orchestrator" {
+  name = "jobscraper_orchestrator"
+  role_arn = aws_iam_role.step_functions_role.arn
+
+  definition = templatefile("${path.module}/step_functions/JobScraperMachine.asl.json", {
+    kalibrr_lambda_arn = aws_lambda_function.kalibrr.arn
+    glints_lambda_arn  = aws_lambda_function.glints.arn
+    jobstreet_lambda_arn = aws_lambda_function.jobstreet.arn
+  })
+
+  logging_configuration {
+    level                   = "ERROR"
+    include_execution_data  = true
+    log_destination         = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
   }
 }
