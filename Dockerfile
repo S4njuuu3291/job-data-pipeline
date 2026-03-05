@@ -41,9 +41,15 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi --no-root
 
-# Install Playwright and Chromium
+# Install Playwright and Chromium (untuk scraper modules)
 RUN pip install --no-cache-dir playwright && \
     playwright install chromium
 
 # Copy source code
 COPY src/ ${LAMBDA_TASK_ROOT}/src/
+
+# Set working directory
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# Default handler (akan di-override oleh image_config.command di Lambda)
+CMD ["src.entrypoint.handlers.kalibrr_handler"]

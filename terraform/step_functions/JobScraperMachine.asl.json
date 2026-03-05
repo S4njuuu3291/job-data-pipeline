@@ -1,8 +1,8 @@
 {
-  "Comment": "A description of my state machine",
-  "StartAt": "Parallel",
+  "Comment": "Job Scraper Pipeline: Parallel scrapers → Sequential silver layer transformation",
+  "StartAt": "ScrapersParallel",
   "States": {
-    "Parallel": {
+    "ScrapersParallel": {
       "Type": "Parallel",
       "Branches": [
         {
@@ -91,6 +91,30 @@
               "End": true
             }
           }
+        }
+      ],
+      "Next": "SilverLayerTransform"
+    },
+    "SilverLayerTransform": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Output": "{% $states.result.Payload %}",
+      "Arguments": {
+        "FunctionName": "${silver_layer_lambda_arn}:$LATEST",
+        "Payload": "{% $states.input %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 2,
+          "BackoffRate": 2,
+          "JitterStrategy": "FULL"
         }
       ],
       "Next": "Success"
