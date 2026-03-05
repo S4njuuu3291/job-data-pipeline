@@ -102,6 +102,22 @@ def upload_to_silver(df: pd.DataFrame) -> str:
 
         logger.info(f"Registering partition to Glue: {db_name}.{table_name}")
 
+        # Try to delete existing partition first (for idempotency)
+        try:
+            glue.delete_partition(
+                DatabaseName=db_name,
+                TableName=table_name,
+                PartitionValues=[processed_date],
+            )
+            logger.info(f"♻️ Existing partition /{processed_date} deleted.")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "EntityNotFoundException":
+                logger.info(f"ℹ️ Partition /{processed_date} doesn't exist, creating new one.")
+            else:
+                # Log but don't fail on delete errors
+                logger.warning(f"⚠️ Could not delete existing partition: {e}")
+
+        # Create fresh partition
         glue.create_partition(
             DatabaseName=db_name,
             TableName=table_name,
@@ -118,14 +134,11 @@ def upload_to_silver(df: pd.DataFrame) -> str:
                 },
             },
         )
-        logger.info(f"✅ Partition registered successfully for /{processed_date}")
+        logger.info(f"✅ Partition /{processed_date} created/replaced successfully")
 
     except ClientError as e:
-        if e.response["Error"]["Code"] == "EntityAlreadyExistsException":
-            logger.info(f"ℹ️ Partition /{processed_date} already exists. Skipping.")
-        else:
-            logger.error(f"❌ AWS ClientError: {e}")
-            raise e
+        logger.error(f"❌ AWS ClientError: {e}")
+        raise e
     except Exception as e:
         logger.error(f"❌ Unexpected Error: {e}")
         raise e
