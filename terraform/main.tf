@@ -445,17 +445,6 @@ resource "aws_iam_role_policy_attachment" "lambda_glue" {
   policy_arn = aws_iam_policy.lambda_glue_policy.arn
 }
 
-# Lake Formation grant untuk Lambda role mengakses Glue database
-resource "aws_lakeformation_permissions" "lambda_glue_db" {
-  principal   = aws_iam_role.lambda_exec_role.arn
-  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE"]
-
-  database {
-    name       = aws_glue_catalog_database.jobscraper_db.name
-    catalog_id = data.aws_caller_identity.current.account_id
-  }
-}
-
 # =========================================================
 #           EVENTBRIDGE SCHEDULER (CRON) → STATE MACHINE
 # =========================================================
@@ -533,20 +522,6 @@ resource "aws_glue_catalog_database" "jobscraper_db" {
   name        = "jobscraper_db"
   description = "Glue Catalog Database untuk Job Scraper Pipeline"
 }
-
-# Lake Formation grant untuk GitHub Actions role mengakses Glue database
-resource "aws_lakeformation_permissions" "github_actions_glue_db" {
-  principal   = aws_iam_role.github_actions_role.arn
-  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE", "DROP"]
-
-  database {
-    name       = aws_glue_catalog_database.jobscraper_db.name
-    catalog_id = data.aws_caller_identity.current.account_id
-  }
-}
-
-# Data source para get current AWS account ID
-data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "glue_role" {
   name = "jobscraper_glue_crawler_role"
@@ -652,30 +627,6 @@ resource "aws_glue_catalog_table" "silver_table" {
   partition_keys {
     name = "ingestion_date"
     type = "string"
-  }
-}
-
-# Lake Formation grant untuk GitHub Actions role mengakses Glue table
-resource "aws_lakeformation_permissions" "github_actions_glue_table" {
-  principal   = aws_iam_role.github_actions_role.arn
-  permissions = ["SELECT", "ALTER", "DROP"]
-
-  table {
-    database_name = aws_glue_catalog_database.jobscraper_db.name
-    name          = aws_glue_catalog_table.silver_table.name
-    catalog_id    = data.aws_caller_identity.current.account_id
-  }
-}
-
-# Lake Formation grant untuk Lambda role mengakses Glue table
-resource "aws_lakeformation_permissions" "lambda_glue_table" {
-  principal   = aws_iam_role.lambda_exec_role.arn
-  permissions = ["SELECT", "ALTER", "INSERT"]
-
-  table {
-    database_name = aws_glue_catalog_database.jobscraper_db.name
-    name          = aws_glue_catalog_table.silver_table.name
-    catalog_id    = data.aws_caller_identity.current.account_id
   }
 }
 
