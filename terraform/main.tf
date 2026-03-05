@@ -168,7 +168,8 @@ resource "aws_iam_policy" "lambda_glue_policy" {
           "glue:GetDatabase",
           "glue:GetTable",
           "glue:GetPartitions",
-          "glue:CreatePartition"
+          "glue:CreatePartition",
+          "glue:DeletePartition"
         ]
         Resource = "*"
       }
