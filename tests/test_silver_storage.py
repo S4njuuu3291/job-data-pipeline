@@ -172,9 +172,17 @@ class TestUploadToSilver:
         }.get(key, default)
 
         mock_s3 = MagicMock()
-        mock_s3_client.return_value = mock_s3
+        mock_glue = MagicMock()
+        
+        # Configure mock to return s3 on first call, glue on second
+        mock_s3_client.side_effect = [mock_s3, mock_glue]
+        
         mock_s3.put_object.return_value = {"ETag": "abc123"}
-        mock_s3.batch_create_partition.return_value = {}
+        # Mock delete_partition to raise EntityNotFoundException (partition doesn't exist)
+        mock_glue.delete_partition.side_effect = ClientError(
+            {"Error": {"Code": "EntityNotFoundException"}}, "DeletePartition"
+        )
+        mock_glue.create_partition.return_value = {}
 
         result = upload_to_silver(sample_dataframe)
 
@@ -183,6 +191,8 @@ class TestUploadToSilver:
         assert "job_data_" in result
         assert ".parquet" in result
         mock_s3.put_object.assert_called_once()
+        mock_glue.delete_partition.assert_called_once()  # Attempt to delete
+        mock_glue.create_partition.assert_called_once()  # Create new partition
 
     @patch("src.silver_layer.storage.boto3.client")
     @patch("src.silver_layer.storage.os.getenv")
@@ -222,8 +232,14 @@ class TestUploadToSilver:
         }.get(key, default)
 
         mock_s3 = MagicMock()
-        mock_s3_client.return_value = mock_s3
-        mock_s3.batch_create_partition.return_value = {}
+        mock_glue = MagicMock()
+        mock_s3_client.side_effect = [mock_s3, mock_glue]
+        
+        # Mock delete_partition to raise EntityNotFoundException
+        mock_glue.delete_partition.side_effect = ClientError(
+            {"Error": {"Code": "EntityNotFoundException"}}, "DeletePartition"
+        )
+        mock_glue.create_partition.return_value = {}
 
         upload_to_silver(sample_dataframe)
 

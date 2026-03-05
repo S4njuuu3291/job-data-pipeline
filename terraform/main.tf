@@ -115,7 +115,7 @@ resource "aws_iam_user" "jobscraper_bot" {
 
 resource "aws_iam_policy" "scraper_s3_write_policy" {
   name        = "jobscraper_s3_write_policy"
-  description = "Write access for scraper to Bronze S3 bucket"
+  description = "Write access for scraper to Bronze and Silver S3 buckets"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -123,14 +123,20 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
       {
         Sid      = "AllowListBucket"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = [aws_s3_bucket.bronze.arn]
+        Action   = ["s3:ListBucket", "s3:ListBucketVersions"]
+        Resource = [aws_s3_bucket.bronze.arn, aws_s3_bucket.silver.arn]
       },
       {
-        Sid      = "AllowObjectReadWrite"
+        Sid      = "AllowBronzeObjectReadWrite"
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
         Resource = ["${aws_s3_bucket.bronze.arn}/*"]
+      },
+      {
+        Sid      = "AllowSilverObjectWrite"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = ["${aws_s3_bucket.silver.arn}/*"]
       }
     ]
   })
@@ -390,8 +396,8 @@ resource "aws_lambda_function" "silver_layer" {
   environment {
     variables = {
       platform                   = "kalibrr,glints,jobstreet"
-      AWS_S3_BRONZE_BUCKET       = aws_s3_bucket.bronze.id
-      AWS_S3_SILVER_BUCKET       = aws_s3_bucket.silver.id
+      AWS_S3_BUCKET_NAME         = aws_s3_bucket.bronze.id
+      AWS_S3_SILVER_BUCKET_NAME  = aws_s3_bucket.silver.id
       AWS_GLUE_DATABASE_NAME     = "jobscraper_db"
       AWS_GLUE_SILVER_TABLE_NAME = "jobscraper_silver_table"
     }
