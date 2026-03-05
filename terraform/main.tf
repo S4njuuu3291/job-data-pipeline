@@ -115,7 +115,7 @@ resource "aws_iam_user" "jobscraper_bot" {
 
 resource "aws_iam_policy" "scraper_s3_write_policy" {
   name        = "jobscraper_s3_write_policy"
-  description = "Write access for scraper to Bronze S3 bucket"
+  description = "Write access for scraper to Bronze and Silver S3 buckets"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -123,14 +123,20 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
       {
         Sid      = "AllowListBucket"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = [aws_s3_bucket.bronze.arn]
+        Action   = ["s3:ListBucket", "s3:ListBucketVersions"]
+        Resource = [aws_s3_bucket.bronze.arn, aws_s3_bucket.silver.arn]
       },
       {
-        Sid      = "AllowObjectReadWrite"
+        Sid      = "AllowBronzeObjectReadWrite"
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
         Resource = ["${aws_s3_bucket.bronze.arn}/*"]
+      },
+      {
+        Sid      = "AllowSilverObjectWrite"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = ["${aws_s3_bucket.silver.arn}/*"]
       }
     ]
   })
@@ -149,6 +155,28 @@ resource "aws_iam_policy" "lambda_dlq_policy" {
   })
 }
 
+resource "aws_iam_policy" "lambda_glue_policy" {
+  name        = "jobscraper_lambda_glue_policy"
+  description = "Allow Lambda to create partitions in Glue Catalog (silver layer)"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:BatchCreatePartition",
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartitions",
+          "glue:CreatePartition",
+          "glue:DeletePartition"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
   user       = aws_iam_user.jobscraper_bot.name
   policy_arn = aws_iam_policy.scraper_s3_write_policy.arn
@@ -157,6 +185,8 @@ resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
 # =========================================================
 #                     BUCKET RESOURCE
 # =========================================================
+
+# BRONZE
 
 resource "aws_s3_bucket" "bronze" {
   bucket        = "jobscraper-bronze-data-8424560"
@@ -171,6 +201,28 @@ resource "aws_s3_bucket" "bronze" {
 
 resource "aws_s3_bucket_public_access_block" "bronze" {
   bucket = aws_s3_bucket.bronze.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# SILVER
+
+resource "aws_s3_bucket" "silver" {
+  bucket        = "jobscraper-silver-data-8424560"
+  force_destroy = true
+
+  tags = {
+    Layer   = "Silver"
+    Project = "Job-Scraper"
+    Owner   = "Sanju"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "silver" {
+  bucket = aws_s3_bucket.silver.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -320,6 +372,42 @@ resource "aws_lambda_function" "jobstreet" {
   timeout     = 900
 }
 
+# Resource untuk Silver Layer Transformation
+resource "aws_lambda_function" "silver_layer" {
+  function_name = "jobscraper-silver-layer"
+  role          = aws_iam_role.lambda_exec_role.arn
+  package_type  = "Image"
+  architectures = ["x86_64"]
+  image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+
+  publish = false
+
+  lifecycle {
+    ignore_changes = [publish]
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.scraper_dlq.arn
+  }
+
+  image_config {
+    command = ["src.entrypoint.handlers.silver_layer_handler"]
+  }
+
+  environment {
+    variables = {
+      platform                   = "kalibrr,glints,jobstreet"
+      AWS_S3_BUCKET_NAME         = aws_s3_bucket.bronze.id
+      AWS_S3_SILVER_BUCKET_NAME  = aws_s3_bucket.silver.id
+      AWS_GLUE_DATABASE_NAME     = "jobscraper_db"
+      AWS_GLUE_SILVER_TABLE_NAME = "jobscraper_silver_table"
+    }
+  }
+
+  memory_size = 1024
+  timeout     = 300
+}
+
 # =========================================================
 #                    IAM ROLE LAMBDA
 # =========================================================
@@ -356,6 +444,12 @@ resource "aws_iam_role_policy_attachment" "lambda_ecr" {
 resource "aws_iam_role_policy_attachment" "lambda_dlq" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.lambda_dlq_policy.arn
+}
+
+# Attach Glue policy ke role Lambda (untuk silver layer transformation)
+resource "aws_iam_role_policy_attachment" "lambda_glue" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.lambda_glue_policy.arn
 }
 
 # =========================================================
@@ -478,8 +572,9 @@ resource "aws_iam_role_policy_attachment" "glue_s3_read_attach" {
   policy_arn = aws_iam_policy.glue_s3_read.arn
 }
 
-resource "aws_glue_catalog_table" "bronze_table" {
-  name          = "jobscraper_bronze_table"
+# SILVER TABLE
+resource "aws_glue_catalog_table" "silver_table" {
+  name          = "jobscraper_silver_table"
   database_name = aws_glue_catalog_database.jobscraper_db.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -489,7 +584,7 @@ resource "aws_glue_catalog_table" "bronze_table" {
   }
 
   storage_descriptor {
-    location      = "s3://${aws_s3_bucket.bronze.id}/"
+    location      = "s3://${aws_s3_bucket.silver.id}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -520,15 +615,20 @@ resource "aws_glue_catalog_table" "bronze_table" {
       name = "job_url"
       type = "string"
     }
+
+    columns {
+      name = "platform"
+      type = "string"
+    }
+
     columns {
       name = "scraped_at"
       type = "string"
     }
-  }
-
-  partition_keys {
-    name = "platform"
-    type = "string"
+    columns {
+      name = "keyword"
+      type = "string"
+    }
   }
 
   partition_keys {
@@ -557,7 +657,7 @@ resource "aws_iam_role" "step_functions_role" {
 resource "aws_iam_policy" "step_functions_policy" {
   name        = "jobscraper_step_functions_policy"
   description = "Policy untuk Step Functions invoke Lambda dan logging"
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -568,7 +668,8 @@ resource "aws_iam_policy" "step_functions_policy" {
         Resource = [
           "${aws_lambda_function.kalibrr.arn}:*",
           "${aws_lambda_function.glints.arn}:*",
-          "${aws_lambda_function.jobstreet.arn}:*"
+          "${aws_lambda_function.jobstreet.arn}:*",
+          "${aws_lambda_function.silver_layer.arn}:*"
         ]
       },
       {
@@ -612,18 +713,19 @@ resource "aws_cloudwatch_log_group" "step_functions_logs" {
 }
 
 resource "aws_sfn_state_machine" "joscraper_orchestrator" {
-  name = "jobscraper_orchestrator"
+  name     = "jobscraper_orchestrator"
   role_arn = aws_iam_role.step_functions_role.arn
 
   definition = templatefile("${path.module}/step_functions/JobScraperMachine.asl.json", {
-    kalibrr_lambda_arn = aws_lambda_function.kalibrr.arn
-    glints_lambda_arn  = aws_lambda_function.glints.arn
-    jobstreet_lambda_arn = aws_lambda_function.jobstreet.arn
+    kalibrr_lambda_arn      = aws_lambda_function.kalibrr.arn
+    glints_lambda_arn       = aws_lambda_function.glints.arn
+    jobstreet_lambda_arn    = aws_lambda_function.jobstreet.arn
+    silver_layer_lambda_arn = aws_lambda_function.silver_layer.arn
   })
 
   logging_configuration {
-    level                   = "ERROR"
-    include_execution_data  = true
-    log_destination         = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+    level                  = "ERROR"
+    include_execution_data = true
+    log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
   }
 }
