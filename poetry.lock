@@ -1024,6 +1024,18 @@ mypyc = ["setuptools (>=50)"]
 reports = ["lxml"]
 
 [[package]]
+name = "mypy-boto3-glue"
+version = "1.42.43"
+description = "Type annotations for boto3 Glue 1.42.43 service generated with mypy-boto3-builder 8.12.0"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "mypy_boto3_glue-1.42.43-py3-none-any.whl", hash = "sha256:8c07413b6b17a8d076c5dc9364cf17c55c9f5dda03bb3789224ba6d774c06f5f"},
+    {file = "mypy_boto3_glue-1.42.43.tar.gz", hash = "sha256:3c116b494ed06ceb9a5399168d87ba780f24f411dd01952e0f78cc60b945c05d"},
+]
+
+[[package]]
 name = "mypy-boto3-s3"
 version = "1.42.37"
 description = "Type annotations for boto3 S3 1.42.37 service generated with mypy-boto3-builder 8.12.0"
@@ -1890,4 +1902,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "4bdcaf399474d7ca7773ddb82b9359ce4ba09606f0a154bce07b9f79e3869d69"
+content-hash = "f028b578a4b069f367986dea6ab93ba78d17f0ed923470d8d647da5c899f30b8"

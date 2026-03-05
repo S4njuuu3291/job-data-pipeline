@@ -86,3 +86,17 @@ def jobstreet_handler(event, context):
     except Exception as e:
         print(f"Error di Lambda JobStreet: {e}")
         raise
+
+
+# Handler untuk Silver Layer
+def silver_layer_handler(event, context):
+    """AWS Lambda handler untuk Silver layer transformation."""
+    from src.silver_layer.main import lambda_handler
+
+    print("Memicu Lambda Silver Layer...")
+    try:
+        result = lambda_handler(event, context)
+        return result
+    except Exception as e:
+        print(f"Error di Lambda Silver Layer: {e}")
+        raise

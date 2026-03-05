@@ -129,7 +129,7 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
       {
         Sid      = "AllowObjectReadWrite"
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject"]
+        Action   = ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
         Resource = ["${aws_s3_bucket.bronze.arn}/*"]
       }
     ]
@@ -149,6 +149,27 @@ resource "aws_iam_policy" "lambda_dlq_policy" {
   })
 }
 
+resource "aws_iam_policy" "lambda_glue_policy" {
+  name        = "jobscraper_lambda_glue_policy"
+  description = "Allow Lambda to create partitions in Glue Catalog (silver layer)"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:BatchCreatePartition",
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartitions",
+          "glue:CreatePartition"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
   user       = aws_iam_user.jobscraper_bot.name
   policy_arn = aws_iam_policy.scraper_s3_write_policy.arn
@@ -157,6 +178,8 @@ resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
 # =========================================================
 #                     BUCKET RESOURCE
 # =========================================================
+
+# BRONZE
 
 resource "aws_s3_bucket" "bronze" {
   bucket        = "jobscraper-bronze-data-8424560"
@@ -171,6 +194,28 @@ resource "aws_s3_bucket" "bronze" {
 
 resource "aws_s3_bucket_public_access_block" "bronze" {
   bucket = aws_s3_bucket.bronze.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# SILVER
+
+resource "aws_s3_bucket" "silver" {
+  bucket        = "jobscraper-silver-data-8424560"
+  force_destroy = true
+
+  tags = {
+    Layer   = "Silver"
+    Project = "Job-Scraper"
+    Owner   = "Sanju"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "silver" {
+  bucket = aws_s3_bucket.silver.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -320,6 +365,41 @@ resource "aws_lambda_function" "jobstreet" {
   timeout     = 900
 }
 
+# Resource untuk Silver Layer Transformation
+resource "aws_lambda_function" "silver_layer" {
+  function_name = "jobscraper-silver-layer"
+  role          = aws_iam_role.lambda_exec_role.arn
+  package_type  = "Image"
+  architectures = ["x86_64"]
+  image_uri     = "${aws_ecr_repository.scraper_repo.repository_url}@${data.aws_ecr_image.scraper_latest.image_digest}"
+
+  publish = false
+
+  lifecycle {
+    ignore_changes = [publish]
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.scraper_dlq.arn
+  }
+
+  image_config {
+    command = ["src.entrypoint.handlers.silver_layer_handler"]
+  }
+
+  environment {
+    variables = {
+      AWS_S3_BRONZE_BUCKET       = aws_s3_bucket.bronze.id
+      AWS_S3_SILVER_BUCKET       = aws_s3_bucket.silver.id
+      AWS_GLUE_DATABASE_NAME     = "jobscraper_db"
+      AWS_GLUE_SILVER_TABLE_NAME = "jobscraper_silver_table"
+    }
+  }
+
+  memory_size = 1024
+  timeout     = 300
+}
+
 # =========================================================
 #                    IAM ROLE LAMBDA
 # =========================================================
@@ -358,52 +438,79 @@ resource "aws_iam_role_policy_attachment" "lambda_dlq" {
   policy_arn = aws_iam_policy.lambda_dlq_policy.arn
 }
 
+# Attach Glue policy ke role Lambda (untuk silver layer transformation)
+resource "aws_iam_role_policy_attachment" "lambda_glue" {
+  role       = aws_iam_role.lambda_exec_role.name
+  policy_arn = aws_iam_policy.lambda_glue_policy.arn
+}
+
 # =========================================================
-#               EVENTBRIDGE SCHEDULER (CRON)
+#           EVENTBRIDGE SCHEDULER (CRON) → STATE MACHINE
 # =========================================================
 
-resource "aws_lambda_permission" "allow_eventbridge_kalibrr" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.kalibrr.function_name
-  principal     = "events.amazonaws.com"
+# Event Rule untuk jam 9 pagi WIB (02:00 UTC)
+# Strategi: Capture postingan tadi malam + pagi, apply saat HR aktif
+resource "aws_cloudwatch_event_rule" "scrape_morning" {
+  name                = "jobscraper-schedule-morning"
+  schedule_expression = "cron(0 2 * * ? *)"
+  description         = "Trigger State Machine jam 09:00 WIB - Prime time HR activity (pagi)"
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_glints" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.glints.function_name
-  principal     = "events.amazonaws.com"
+resource "aws_cloudwatch_event_target" "scrape_morning_target" {
+  rule      = aws_cloudwatch_event_rule.scrape_morning.name
+  target_id = "TriggerStateMachineMorning"
+  arn       = aws_sfn_state_machine.joscraper_orchestrator.arn
+  role_arn  = aws_iam_role.eventbridge_role.arn
 }
 
-resource "aws_lambda_permission" "allow_eventbridge_jobstreet" {
-  statement_id  = "AllowExecutionFromEventBridge"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.jobstreet.function_name
-  principal     = "events.amazonaws.com"
+# Event Rule untuk jam 4 sore WIB (09:00 UTC)
+# Strategi: Capture postingan setelah makan siang, apply sebelum HR tutup laptop
+resource "aws_cloudwatch_event_rule" "scrape_evening" {
+  name                = "jobscraper-schedule-evening"
+  schedule_expression = "cron(0 9 * * ? *)"
+  description         = "Trigger State Machine jam 16:00 WIB - Sebelum HR tutup (sore)"
 }
 
-resource "aws_cloudwatch_event_rule" "daily_scrape" {
-  name                = "daily_scrape_rule"
-  schedule_expression = "cron(0 22 * * ? *)"
+resource "aws_cloudwatch_event_target" "scrape_evening_target" {
+  rule      = aws_cloudwatch_event_rule.scrape_evening.name
+  target_id = "TriggerStateMachineEvening"
+  arn       = aws_sfn_state_machine.joscraper_orchestrator.arn
+  role_arn  = aws_iam_role.eventbridge_role.arn
 }
 
-resource "aws_cloudwatch_event_target" "kalibrr_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerKalibrrLambda"
-  arn       = aws_lambda_function.kalibrr.arn
+# IAM Role untuk EventBridge
+resource "aws_iam_role" "eventbridge_role" {
+  name = "jobscraper_eventbridge_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+    }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "glints_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerGlintsLambda"
-  arn       = aws_lambda_function.glints.arn
+resource "aws_iam_policy" "eventbridge_state_machine_policy" {
+  name        = "jobscraper_eventbridge_state_machine_policy"
+  description = "Policy untuk EventBridge invoke State Machine"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "states:StartExecution"
+      ]
+      Resource = aws_sfn_state_machine.joscraper_orchestrator.arn
+    }]
+  })
 }
 
-resource "aws_cloudwatch_event_target" "jobstreet_target" {
-  rule      = aws_cloudwatch_event_rule.daily_scrape.name
-  target_id = "TriggerJobstreetLambda"
-  arn       = aws_lambda_function.jobstreet.arn
+resource "aws_iam_role_policy_attachment" "eventbridge_state_machine_attach" {
+  role       = aws_iam_role.eventbridge_role.id
+  policy_arn = aws_iam_policy.eventbridge_state_machine_policy.arn
 }
 
 # =========================================================
@@ -457,8 +564,9 @@ resource "aws_iam_role_policy_attachment" "glue_s3_read_attach" {
   policy_arn = aws_iam_policy.glue_s3_read.arn
 }
 
-resource "aws_glue_catalog_table" "bronze_table" {
-  name          = "jobscraper_bronze_table"
+# SILVER TABLE
+resource "aws_glue_catalog_table" "silver_table" {
+  name          = "jobscraper_silver_table"
   database_name = aws_glue_catalog_database.jobscraper_db.name
   table_type    = "EXTERNAL_TABLE"
 
@@ -468,7 +576,7 @@ resource "aws_glue_catalog_table" "bronze_table" {
   }
 
   storage_descriptor {
-    location      = "s3://${aws_s3_bucket.bronze.id}/"
+    location      = "s3://${aws_s3_bucket.silver.id}/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -499,19 +607,116 @@ resource "aws_glue_catalog_table" "bronze_table" {
       name = "job_url"
       type = "string"
     }
+
+    columns {
+      name = "platform"
+      type = "string"
+    }
+
     columns {
       name = "scraped_at"
+      type = "string"
+    }
+    columns {
+      name = "keyword"
       type = "string"
     }
   }
 
   partition_keys {
-    name = "platform"
-    type = "string"
-  }
-
-  partition_keys {
     name = "ingestion_date"
     type = "string"
+  }
+}
+
+# =========================================================
+#               STATE MACHINE (STEP FUNCTIONS)
+# =========================================================
+
+resource "aws_iam_role" "step_functions_role" {
+  name = "jobscraper_step_functions_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_policy" "step_functions_policy" {
+  name        = "jobscraper_step_functions_policy"
+  description = "Policy untuk Step Functions invoke Lambda dan logging"
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowLambdaInvoke"
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = [
+          "${aws_lambda_function.kalibrr.arn}:*",
+          "${aws_lambda_function.glints.arn}:*",
+          "${aws_lambda_function.jobstreet.arn}:*"
+        ]
+      },
+      {
+        Sid    = "AllowCloudWatchLogging"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "step_functions_policy" {
+  role       = aws_iam_role.step_functions_role.id
+  policy_arn = aws_iam_policy.step_functions_policy.arn
+}
+
+# =========================================================
+#           CLOUDWATCH LOG GROUP STEP FUNCTIONS
+# =========================================================
+
+resource "aws_cloudwatch_log_group" "step_functions_logs" {
+  name              = "/aws/stepfunctions/jobscraper-orchestrator"
+  retention_in_days = 7
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "StepFunctionsLogging"
+  }
+}
+
+resource "aws_sfn_state_machine" "joscraper_orchestrator" {
+  name = "jobscraper_orchestrator"
+  role_arn = aws_iam_role.step_functions_role.arn
+
+  definition = templatefile("${path.module}/step_functions/JobScraperMachine.asl.json", {
+    kalibrr_lambda_arn      = aws_lambda_function.kalibrr.arn
+    glints_lambda_arn       = aws_lambda_function.glints.arn
+    jobstreet_lambda_arn    = aws_lambda_function.jobstreet.arn
+    silver_layer_lambda_arn = aws_lambda_function.silver_layer.arn
+  })
+
+  logging_configuration {
+    level                   = "ERROR"
+    include_execution_data  = true
+    log_destination         = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
   }
 }
