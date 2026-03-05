@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 def validate_silver_schema(df: pd.DataFrame) -> pd.DataFrame:
     """Validate dataframe against Silver layer schema.
-    
+
     Args:
         df: Input dataframe to validate
-        
+
     Returns:
         Validated dataframe
-        
+
     Raises:
         pa.errors.SchemaError: If dataframe doesn't match schema
     """

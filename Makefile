@@ -31,7 +31,7 @@ test:
 	poetry run pytest --tb=short
 	@echo "✅ Tests passed!"
 
-ci: lint mypy test
+ci: fmt lint mypy test
 	@echo "✅ All CI checks passed!"
 
 help:

@@ -25,6 +25,7 @@ DEFAULT_KEYWORDS_GLINTS = [
     "bi+engineer+intern",
 ]
 
+
 # Handler untuk Kalibrr
 def kalibrr_handler(event, context):
     import asyncio

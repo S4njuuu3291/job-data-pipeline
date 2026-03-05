@@ -21,6 +21,8 @@ __all__ = [
     "get_list_platforms",
     "get_bronze_bucket_name",
     "get_silver_bucket_name",
+    "get_glue_database_name",
+    "get_glue_silver_table_name",
     "JOB_SILVER_SCHEMA",
     "normalize_location",
     "apply_location_normalization",

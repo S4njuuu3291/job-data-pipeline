@@ -2,7 +2,6 @@
 
 import os
 import pytest
-from dotenv import load_dotenv
 
 # Mock the dotenv load before importing config
 os.environ["platform"] = "kalibrr,glints,jobstreet"
@@ -44,7 +43,9 @@ class TestGetBronzeBucketName:
     def test_get_bronze_bucket_missing_env(self, monkeypatch):
         """Test error when Bronze bucket environment variable is missing."""
         monkeypatch.delenv("AWS_S3_BUCKET_NAME", raising=False)
-        with pytest.raises(ValueError, match="AWS_S3_BUCKET_NAME environment variable not set"):
+        with pytest.raises(
+            ValueError, match="AWS_S3_BUCKET_NAME environment variable not set"
+        ):
             get_bronze_bucket_name()
 
 
@@ -59,7 +60,9 @@ class TestGetSilverBucketName:
     def test_get_silver_bucket_missing_env(self, monkeypatch):
         """Test error when Silver bucket environment variable is missing."""
         monkeypatch.delenv("AWS_S3_SILVER_BUCKET_NAME", raising=False)
-        with pytest.raises(ValueError, match="AWS_S3_SILVER_BUCKET_NAME environment variable not set"):
+        with pytest.raises(
+            ValueError, match="AWS_S3_SILVER_BUCKET_NAME environment variable not set"
+        ):
             get_silver_bucket_name()
 
 
@@ -68,7 +71,14 @@ class TestJobSilverSchema:
 
     def test_schema_has_required_columns(self):
         """Test that schema has all required columns."""
-        expected_columns = {"job_id", "job_title", "company_name", "location", "job_url", "platform"}
+        expected_columns = {
+            "job_id",
+            "job_title",
+            "company_name",
+            "location",
+            "job_url",
+            "platform",
+        }
         assert set(JOB_SILVER_SCHEMA.columns.keys()) == expected_columns
 
     def test_schema_job_id_is_unique(self):

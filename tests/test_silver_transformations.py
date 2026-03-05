@@ -1,7 +1,6 @@
 """Tests for Silver layer transformations module."""
 
 import pandas as pd
-import pytest
 
 from src.silver_layer.transformations import (
     normalize_location,
@@ -94,26 +93,34 @@ class TestApplyLocationNormalization:
 
     def test_apply_normalization_to_dataframe(self):
         """Test applying normalization to a dataframe."""
-        df = pd.DataFrame({
-            "location": ["jakarta selatan", "bandung", "yogyakarta"],
-            "job_title": ["Engineer", "Developer", "Analyst"]
-        })
-        
+        df = pd.DataFrame(
+            {
+                "location": ["jakarta selatan", "bandung", "yogyakarta"],
+                "job_title": ["Engineer", "Developer", "Analyst"],
+            }
+        )
+
         result = apply_location_normalization(df)
-        
-        assert result["location"].tolist() == ["Jakarta Selatan", "Bandung", "Yogyakarta"]
+
+        assert result["location"].tolist() == [
+            "Jakarta Selatan",
+            "Bandung",
+            "Yogyakarta",
+        ]
         assert result["job_title"].tolist() == ["Engineer", "Developer", "Analyst"]
 
     def test_normalization_preserves_dataframe_structure(self):
         """Test that normalization preserves dataframe structure."""
-        df = pd.DataFrame({
-            "location": ["jakarta barat", "bekasi"],
-            "job_id": ["id1", "id2"],
-            "job_title": ["Dev", "Manager"]
-        })
-        
+        df = pd.DataFrame(
+            {
+                "location": ["jakarta barat", "bekasi"],
+                "job_id": ["id1", "id2"],
+                "job_title": ["Dev", "Manager"],
+            }
+        )
+
         result = apply_location_normalization(df)
-        
+
         assert len(result) == 2
         assert set(result.columns) == {"location", "job_id", "job_title"}
 
@@ -121,6 +128,6 @@ class TestApplyLocationNormalization:
         """Test normalization with empty dataframe."""
         df = pd.DataFrame({"location": []})
         result = apply_location_normalization(df)
-        
+
         assert len(result) == 0
         assert "location" in result.columns

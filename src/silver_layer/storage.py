@@ -11,7 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
-from .config import get_bronze_bucket_name, get_silver_bucket_name
+from .config import get_bronze_bucket_name
 
 load_dotenv()
 
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 def get_bronze_object(list_platforms: list[str]) -> pd.DataFrame:
     """Read parquet files from Bronze S3 bucket for given platforms.
-    
+
     Args:
         list_platforms: List of platform names to read data from
-        
+
     Returns:
         Combined dataframe from all platforms
     """
@@ -37,11 +37,11 @@ def get_bronze_object(list_platforms: list[str]) -> pd.DataFrame:
 
     try:
         df = pd.DataFrame()
-        
+
         for platform in list_platforms:
             object_key_prefix = f"platform={platform}/ingestion_date={ingestion_date}/"
             logger.info(f"Listing objects with prefix: {object_key_prefix}")
-            
+
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=object_key_prefix)
 
             if "Contents" not in response:
@@ -51,7 +51,7 @@ def get_bronze_object(list_platforms: list[str]) -> pd.DataFrame:
             for obj in response["Contents"]:
                 obj_key = obj["Key"]
                 logger.info(f"Processing object: {obj_key}")
-                
+
                 obj_response = s3.get_object(Bucket=bucket_name, Key=obj_key)
                 df_obj = pd.read_parquet(io.BytesIO(obj_response["Body"].read()))
                 df = pd.concat([df, df_obj], ignore_index=True)
@@ -59,52 +59,49 @@ def get_bronze_object(list_platforms: list[str]) -> pd.DataFrame:
         logger.info(f"Combined DataFrame shape: {df.shape}")
         logger.info(f"Combined DataFrame columns: {df.columns.tolist()}")
         return df
-        
+
     except ClientError as e:
         logger.error(f"Error accessing S3: {e}")
         raise e
 
+
 def upload_to_silver(df: pd.DataFrame) -> str:
     """
     Upload processed dataframe ke Silver S3 bucket dan daftarkan partisinya ke Glue.
-    
+
     Args:
         df: Dataframe yang sudah dibersihkan (Silver data).
         platform: Nama platform (kalibrr, glints, atau jobstreet).
-        
+
     Returns:
         S3 object key yang berhasil diupload.
     """
     bucket_name = os.getenv("AWS_S3_SILVER_BUCKET_NAME")
     db_name = os.getenv("AWS_GLUE_DATABASE_NAME", "jobscraper_db")
     table_name = os.getenv("AWS_GLUE_SILVER_TABLE_NAME", "jobscraper_silver_table")
-    
+
     if not bucket_name:
         raise ValueError("AWS_S3_SILVER_BUCKET_NAME is not set")
 
     s3: S3Client = boto3.client("s3")
     glue: GlueClient = boto3.client("glue")
-    
+
     processed_date = datetime.now().strftime("%Y-%m-%d")
 
     partition_prefix = f"ingestion_date={processed_date}/"
     object_key = f"{partition_prefix}job_data_{processed_date}.parquet"
 
     buffer = io.BytesIO()
-    df.to_parquet(buffer, index=False, engine='pyarrow')
+    df.to_parquet(buffer, index=False, engine="pyarrow")
     buffer.seek(0)
 
     try:
         logger.info(f"Uploading to S3: s3://{bucket_name}/{object_key}")
-        s3.put_object(
-            Bucket=bucket_name,
-            Key=object_key,
-            Body=buffer.getvalue()
-        )
-        logger.info(f"✅ File uploaded successfully.")
+        s3.put_object(Bucket=bucket_name, Key=object_key, Body=buffer.getvalue())
+        logger.info("✅ File uploaded successfully.")
 
         logger.info(f"Registering partition to Glue: {db_name}.{table_name}")
-        
+
         glue.create_partition(
             DatabaseName=db_name,
             TableName=table_name,
@@ -116,15 +113,15 @@ def upload_to_silver(df: pd.DataFrame) -> str:
                     "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
                     "SerdeInfo": {
                         "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
-                        "Parameters": {"serialization.format": "1"}
-                    }
-                }
-            }
+                        "Parameters": {"serialization.format": "1"},
+                    },
+                },
+            },
         )
         logger.info(f"✅ Partition registered successfully for /{processed_date}")
 
     except ClientError as e:
-        if e.response['Error']['Code'] == 'EntityAlreadyExistsException':
+        if e.response["Error"]["Code"] == "EntityAlreadyExistsException":
             logger.info(f"ℹ️ Partition /{processed_date} already exists. Skipping.")
         else:
             logger.error(f"❌ AWS ClientError: {e}")

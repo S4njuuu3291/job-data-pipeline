@@ -5,15 +5,15 @@ import pandas as pd
 
 def normalize_location(location: str) -> str:
     """Normalize location names to standardized format.
-    
+
     Args:
         location: Raw location string from job listing
-        
+
     Returns:
         Normalized location string
     """
     location = location.lower()
-    
+
     # Jakarta districts
     if "jakarta selatan" in location or "south jakarta" in location:
         return "Jakarta Selatan"
@@ -27,7 +27,7 @@ def normalize_location(location: str) -> str:
         return "Jakarta Utara"
     elif "jakarta" in location:
         return "Jakarta"
-    
+
     # other cities
     elif "yogyakarta" in location or "jogja" in location:
         return "Yogyakarta"
@@ -51,10 +51,10 @@ def normalize_location(location: str) -> str:
 
 def apply_location_normalization(df: pd.DataFrame) -> pd.DataFrame:
     """Apply location normalization to dataframe.
-    
+
     Args:
         df: Input dataframe with 'location' column
-        
+
     Returns:
         Dataframe with normalized locations
     """

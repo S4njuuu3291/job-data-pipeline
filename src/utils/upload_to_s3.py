@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 load_dotenv()
 
+
 def upload_to_s3(df: pd.DataFrame, platform: str):
     s3: S3Client = boto3.client("s3")
     bucket_name = os.getenv("AWS_S3_BUCKET_NAME")

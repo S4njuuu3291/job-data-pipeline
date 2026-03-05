@@ -2,7 +2,6 @@
 
 import os
 from dotenv import load_dotenv
-import pandera.pandas as pa
 from pandera.pandas import DataFrameSchema, Column, Check
 
 load_dotenv()
