@@ -389,6 +389,7 @@ resource "aws_lambda_function" "silver_layer" {
 
   environment {
     variables = {
+      platform                   = "kalibrr,glints,jobstreet"
       AWS_S3_BRONZE_BUCKET       = aws_s3_bucket.bronze.id
       AWS_S3_SILVER_BUCKET       = aws_s3_bucket.silver.id
       AWS_GLUE_DATABASE_NAME     = "jobscraper_db"
@@ -442,6 +443,17 @@ resource "aws_iam_role_policy_attachment" "lambda_dlq" {
 resource "aws_iam_role_policy_attachment" "lambda_glue" {
   role       = aws_iam_role.lambda_exec_role.name
   policy_arn = aws_iam_policy.lambda_glue_policy.arn
+}
+
+# Lake Formation grant untuk Lambda role mengakses Glue database
+resource "aws_lakeformation_permissions" "lambda_glue_db" {
+  principal   = aws_iam_role.lambda_exec_role.arn
+  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE"]
+
+  database {
+    name       = aws_glue_catalog_database.jobscraper_db.name
+    catalog_id = data.aws_caller_identity.current.account_id
+  }
 }
 
 # =========================================================
@@ -521,6 +533,20 @@ resource "aws_glue_catalog_database" "jobscraper_db" {
   name        = "jobscraper_db"
   description = "Glue Catalog Database untuk Job Scraper Pipeline"
 }
+
+# Lake Formation grant untuk GitHub Actions role mengakses Glue database
+resource "aws_lakeformation_permissions" "github_actions_glue_db" {
+  principal   = aws_iam_role.github_actions_role.arn
+  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE", "DROP"]
+
+  database {
+    name       = aws_glue_catalog_database.jobscraper_db.name
+    catalog_id = data.aws_caller_identity.current.account_id
+  }
+}
+
+# Data source para get current AWS account ID
+data "aws_caller_identity" "current" {}
 
 resource "aws_iam_role" "glue_role" {
   name = "jobscraper_glue_crawler_role"
@@ -629,6 +655,30 @@ resource "aws_glue_catalog_table" "silver_table" {
   }
 }
 
+# Lake Formation grant untuk GitHub Actions role mengakses Glue table
+resource "aws_lakeformation_permissions" "github_actions_glue_table" {
+  principal   = aws_iam_role.github_actions_role.arn
+  permissions = ["SELECT", "ALTER", "DROP"]
+
+  table {
+    database_name = aws_glue_catalog_database.jobscraper_db.name
+    name          = aws_glue_catalog_table.silver_table.name
+    catalog_id    = data.aws_caller_identity.current.account_id
+  }
+}
+
+# Lake Formation grant untuk Lambda role mengakses Glue table
+resource "aws_lakeformation_permissions" "lambda_glue_table" {
+  principal   = aws_iam_role.lambda_exec_role.arn
+  permissions = ["SELECT", "ALTER", "INSERT"]
+
+  table {
+    database_name = aws_glue_catalog_database.jobscraper_db.name
+    name          = aws_glue_catalog_table.silver_table.name
+    catalog_id    = data.aws_caller_identity.current.account_id
+  }
+}
+
 # =========================================================
 #               STATE MACHINE (STEP FUNCTIONS)
 # =========================================================
@@ -660,7 +710,8 @@ resource "aws_iam_policy" "step_functions_policy" {
         Resource = [
           "${aws_lambda_function.kalibrr.arn}:*",
           "${aws_lambda_function.glints.arn}:*",
-          "${aws_lambda_function.jobstreet.arn}:*"
+          "${aws_lambda_function.jobstreet.arn}:*",
+          "${aws_lambda_function.silver_layer.arn}:*"
         ]
       },
       {
