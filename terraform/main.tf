@@ -129,7 +129,7 @@ resource "aws_iam_policy" "scraper_s3_write_policy" {
       {
         Sid      = "AllowObjectReadWrite"
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject","s3:DeleteObject"]
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
         Resource = ["${aws_s3_bucket.bronze.arn}/*"]
       }
     ]
@@ -649,7 +649,7 @@ resource "aws_iam_role" "step_functions_role" {
 resource "aws_iam_policy" "step_functions_policy" {
   name        = "jobscraper_step_functions_policy"
   description = "Policy untuk Step Functions invoke Lambda dan logging"
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -704,7 +704,7 @@ resource "aws_cloudwatch_log_group" "step_functions_logs" {
 }
 
 resource "aws_sfn_state_machine" "joscraper_orchestrator" {
-  name = "jobscraper_orchestrator"
+  name     = "jobscraper_orchestrator"
   role_arn = aws_iam_role.step_functions_role.arn
 
   definition = templatefile("${path.module}/step_functions/JobScraperMachine.asl.json", {
@@ -715,8 +715,8 @@ resource "aws_sfn_state_machine" "joscraper_orchestrator" {
   })
 
   logging_configuration {
-    level                   = "ERROR"
-    include_execution_data  = true
-    log_destination         = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+    level                  = "ERROR"
+    include_execution_data = true
+    log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
   }
 }
