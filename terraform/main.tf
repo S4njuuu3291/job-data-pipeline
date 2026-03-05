@@ -389,6 +389,7 @@ resource "aws_lambda_function" "silver_layer" {
 
   environment {
     variables = {
+      platform                   = "kalibrr,glints,jobstreet"
       AWS_S3_BRONZE_BUCKET       = aws_s3_bucket.bronze.id
       AWS_S3_SILVER_BUCKET       = aws_s3_bucket.silver.id
       AWS_GLUE_DATABASE_NAME     = "jobscraper_db"
@@ -709,7 +710,8 @@ resource "aws_iam_policy" "step_functions_policy" {
         Resource = [
           "${aws_lambda_function.kalibrr.arn}:*",
           "${aws_lambda_function.glints.arn}:*",
-          "${aws_lambda_function.jobstreet.arn}:*"
+          "${aws_lambda_function.jobstreet.arn}:*",
+          "${aws_lambda_function.silver_layer.arn}:*"
         ]
       },
       {
