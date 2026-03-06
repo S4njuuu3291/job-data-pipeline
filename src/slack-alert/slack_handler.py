@@ -96,10 +96,10 @@ def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> l
     
     return parsed_data
 
-def send_slack_alert(message: str, webhook_url: str):
-    """Send alert message to Slack channel via webhook."""
+def send_slack_alert(blocks: list, webhook_url: str):
+    """Send alert message to Slack channel via webhook using Block Kit."""
 
-    payload = {"text": message}
+    payload = {"blocks": blocks}
     try:
         response = requests.post(webhook_url, json=payload)
         response.raise_for_status()
@@ -119,56 +119,94 @@ def shorten_url(url: str) -> str:
     return url  # Fallback to original URL
 
 
-def format_job_message(parsed_data: list[dict]) -> str:
-    """Format job data into beautiful Slack message with proper structure."""
-    if not parsed_data:
-        return "ℹ️ No new job postings found for today."
-
-    # Platform emoji mapping
-    platform_emoji = {
-        'glints': '🎯',
-        'jobstreet': '💼',
-        'kalibrr': '⭐'
+def format_job_blocks(parsed_data: list[dict]) -> list:
+    """Format job data into Slack Block Kit format for mobile-friendly display."""
+    
+    # Platform emoji and color mapping
+    platform_config = {
+        'glints': {'emoji': '🎯', 'color': '#FF6B6B'},
+        'jobstreet': {'emoji': '💼', 'color': '#4ECDC4'},
+        'kalibrr': {'emoji': '⭐', 'color': '#FFE66D'}
     }
     
-    message = f"\n🆕 *{len(parsed_data)} New Job{'s' if len(parsed_data) > 1 else ''} Found*\n"
-    message += "━" * 50 + "\n\n"
+    blocks = []
     
+    # Header section
+    wib = timezone(timedelta(hours=7))
+    now_wib = datetime.now(wib)
+    time_str = now_wib.strftime('%d %b, %H:%M WIB')
+    
+    if not parsed_data:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "ℹ️ *No new job postings found for today.*"
+            }
+        })
+        return blocks
+    
+    blocks.append({
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": f"🆕 {len(parsed_data)} New Job{'s' if len(parsed_data) > 1 else ''} Found",
+            "emoji": True
+        }
+    })
+    
+    blocks.append({
+        "type": "context",
+        "elements": [
+            {
+                "type": "mrkdwn",
+                "text": f"📋 {time_str}"
+            }
+        ]
+    })
+    
+    blocks.append({"type": "divider"})
+    
+    # Job listings
     for idx, job in enumerate(parsed_data, 1):
         platform = job.get('platform', 'unknown').lower()
-        platform_icon = platform_emoji.get(platform, '💼')
+        config = platform_config.get(platform, {'emoji': '💼', 'color': '#5C5C5C'})
         
         short_url = shorten_url(job['job_url'])
-        url_link = f"<{short_url}|Lihat Posisi>"
         
-        # Format: number + title
-        message += f"*{idx}. {job['job_title']}*\n"
+        # Job card with context
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{idx}. {job['job_title']}*\n{config['emoji']} {job['company_name']} • 📍 {job['location']}"
+            },
+            "accessory": {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Open",
+                    "emoji": True
+                },
+                "url": short_url,
+                "style": "primary"
+            }
+        })
         
-        # Format: company | location | platform
-        message += f"   {platform_icon} {job['company_name']}  •  📍 {job['location']}\n"
-        
-        # Format: apply link
-        message += f"   {url_link}\n\n"
+        if idx < len(parsed_data):
+            blocks.append({"type": "divider"})
     
-    return message
+    return blocks
 
 def lambda_handler(event, context):
     ingestion_date = event.get("ingestion_date", datetime.now().strftime('%Y-%m-%d'))
     parsed_data = athena_query(ingestion_date)
     
-    # Format message from job data
-    job_message = format_job_message(parsed_data)
-    
-    # Get current time in WIB (UTC+7)
-    wib = timezone(timedelta(hours=7))
-    now_wib = datetime.now(wib)
-    time_str = now_wib.strftime('%d %b, %H:%M WIB')
-    
-    # Create final Slack message with header and footer
-    message = f"*📋 Job Alert - {time_str}*{job_message}"
+    # Format job data into Slack blocks
+    blocks = format_job_blocks(parsed_data)
 
     # Send to Slack
-    send_slack_alert(message, import_url())
+    send_slack_alert(blocks, import_url())
     logger.info(f"Alert sent: {len(parsed_data)} jobs")
 
     return {
