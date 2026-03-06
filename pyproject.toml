@@ -22,6 +22,8 @@ boto3-stubs = {extras = ["s3"], version = "^1.42.53"}
 tenacity = "^9.1.4"
 pyarrow = "^23.0.1"
 mypy-boto3-glue = "^1.42.43"
+requests = "^2.32.5"
+mypy-boto3-athena = "^1.42.43"
 
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^4.1.0"
