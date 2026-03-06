@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -24,46 +24,76 @@ def import_url():
 def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> list[dict]:
     athena: AthenaClient = client("athena")
     
-    query = f"select * from v_jobscraper_clean \
-            where ingestion_date = '{ingestion_date}' \
-            and discovery_type = 'NEW'"
+    # Use v_jobscraper_clean view which has ingestion_date and discovery_type columns
+    # Lake Formation permissions now granted for the view
+    query = f"""
+    SELECT * FROM v_jobscraper_clean
+    WHERE ingestion_date = '{ingestion_date}'
+    AND discovery_type = 'NEW'
+    """
 
+    logger.info(f"Executing Athena query for date: {ingestion_date}")
+    logger.info(f"Query: {query}")
+    
     response = athena.start_query_execution(
         QueryString=query,
         QueryExecutionContext={"Database": "jobscraper_db"},
         WorkGroup="jobscraper-slack-alert-workgroup"
     )
 
+    query_id = response["QueryExecutionId"]
+    logger.info(f"Query ID: {query_id}")
+
     while True:
-        query_status = athena.get_query_execution(QueryExecutionId=response["QueryExecutionId"])
+        query_status = athena.get_query_execution(QueryExecutionId=query_id)
         status = query_status["QueryExecution"]["Status"]["State"]
 
         if status in ["SUCCEEDED", "FAILED", "CANCELLED"]:
             break
 
-        print(f"Query status: {status}. Waiting for completion...")
+        logger.info(f"Query status: {status}. Waiting for completion...")
         time.sleep(2)
 
     parsed_data = []
     
     if status == "SUCCEEDED":
-        results = athena.get_query_results(QueryExecutionId=response["QueryExecutionId"])
+        results = athena.get_query_results(QueryExecutionId=query_id)
+        rows = results["ResultSet"]["Rows"]
+        
+        logger.info(f"Query returned {len(rows)} rows (including header)")
 
-        if len(results["ResultSet"]["Rows"]) <= 1:
-            print("Query completed but no results found.")
+        if len(rows) <= 1:
+            logger.warning("Query completed but no data found.")
+            print(f"⚠️ Query completed but no data found. Rows: {len(rows)}")
             return []
 
-        columns = [col["VarCharValue"] for col in results["ResultSet"]["Rows"][0]["Data"]]
+        # Parse column names from header
+        columns = [col.get("VarCharValue", "") for col in rows[0]["Data"]]
+        logger.info(f"Columns: {columns}")
+        print(f"📊 Columns: {columns}")
 
-        for row in results["ResultSet"]["Rows"][1:]:
+        # Parse data rows
+        for row_idx, row in enumerate(rows[1:], 1):
             row_dict = {}
-            for idx, col in enumerate(columns):
-                value = row["Data"][idx].get("VarCharValue", "")
-                row_dict[col] = value
-        
-            parsed_data.append(row_dict)
+            try:
+                for col_idx, col in enumerate(columns):
+                    value = row["Data"][col_idx].get("VarCharValue", "")
+                    row_dict[col] = value
+                parsed_data.append(row_dict)
+            except (IndexError, KeyError) as e:
+                logger.warning(f"Error parsing row {row_idx}: {e}")
+                continue
     
-        print("✅ Athena query completed successfully!")
+        logger.info(f"✅ Parsed {len(parsed_data)} job records successfully!")
+        print(f"✅ Parsed {len(parsed_data)} job records successfully!")
+    else:
+        logger.error(f"Query failed with status: {status}")
+        print(f"❌ Query failed with status: {status}")
+        if "StateChangeReason" in query_status["QueryExecution"]["Status"]:
+            reason = query_status['QueryExecution']['Status']['StateChangeReason']
+            logger.error(f"Reason: {reason}")
+            print(f"❌ Reason: {reason}")
+    
     return parsed_data
 
 def send_slack_alert(message: str, webhook_url: str):
@@ -90,17 +120,35 @@ def shorten_url(url: str) -> str:
 
 
 def format_job_message(parsed_data: list[dict]) -> str:
-    """Format job data into compact Slack message with shortened URLs."""
+    """Format job data into beautiful Slack message with proper structure."""
     if not parsed_data:
-        return "No new job postings found for today."
+        return "ℹ️ No new job postings found for today."
 
-    message = f"🆕 *Found {len(parsed_data)} New Jobs*\n\n"
+    # Platform emoji mapping
+    platform_emoji = {
+        'glints': '🎯',
+        'jobstreet': '💼',
+        'kalibrr': '⭐'
+    }
+    
+    message = f"\n🆕 *{len(parsed_data)} New Job{'s' if len(parsed_data) > 1 else ''} Found*\n"
+    message += "━" * 50 + "\n\n"
     
     for idx, job in enumerate(parsed_data, 1):
-        short_url = shorten_url(job['job_url'])
-        url_link = f"<{short_url}|Link>"
+        platform = job.get('platform', 'unknown').lower()
+        platform_icon = platform_emoji.get(platform, '💼')
         
-        message += f"{idx}. {job['job_title']} @ {job['company_name']} ({job['location']}, {job['platform']}) {url_link}\n"
+        short_url = shorten_url(job['job_url'])
+        url_link = f"<{short_url}|Lihat Posisi>"
+        
+        # Format: number + title
+        message += f"*{idx}. {job['job_title']}*\n"
+        
+        # Format: company | location | platform
+        message += f"   {platform_icon} {job['company_name']}  •  📍 {job['location']}\n"
+        
+        # Format: apply link
+        message += f"   {url_link}\n\n"
     
     return message
 
@@ -111,8 +159,13 @@ def lambda_handler(event, context):
     # Format message from job data
     job_message = format_job_message(parsed_data)
     
-    # Create final Slack message
-    message = f"📢 *Job Alert - {datetime.now().strftime('%Y-%m-%d %H:%M')}* 📢\n\n{job_message}"
+    # Get current time in WIB (UTC+7)
+    wib = timezone(timedelta(hours=7))
+    now_wib = datetime.now(wib)
+    time_str = now_wib.strftime('%d %b, %H:%M WIB')
+    
+    # Create final Slack message with header and footer
+    message = f"*📋 Job Alert - {time_str}*{job_message}"
 
     # Send to Slack
     send_slack_alert(message, import_url())

@@ -1,4 +1,10 @@
 # =========================================================
+#                DATA SOURCES
+# =========================================================
+
+data "aws_caller_identity" "current" {}
+
+# =========================================================
 #              GITHUB OIDC PROVIDER FOR CI/CD
 # =========================================================
 
@@ -227,7 +233,17 @@ resource "aws_iam_policy" "slack_athena_policy" {
         Effect = "Allow"
         Action = [
           "glue:GetDatabase",
-          "glue:GetTable"
+          "glue:GetTable",
+          "glue:GetPartitions"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowLakeFormationAccess"
+        Effect = "Allow"
+        Action = [
+          "lakeformation:GetDataAccess",
+          "lakeformation:GetDataLakePrincipal"
         ]
         Resource = "*"
       }
@@ -281,6 +297,19 @@ resource "aws_iam_policy" "slack_s3_policy" {
       }
     ]
   })
+}
+
+# Lake Formation Data Lake Settings - Add Lambda role as Data Lake Admin
+# Also disable cross-account filtering to simplify permissions
+resource "aws_lakeformation_data_lake_settings" "slack_lambda_admin" {
+  depends_on = [aws_iam_role.slack_lambda_role]
+
+  admins = [
+    aws_iam_role.slack_lambda_role.arn
+  ]
+
+  # Disable fine-grained access control which is causing column-level permission issues
+  allow_external_data_filtering = false
 }
 
 # Athena Workgroup untuk Slack Lambda
