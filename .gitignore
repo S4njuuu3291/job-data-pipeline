@@ -17,6 +17,7 @@
 .nfs*
 
 out.json
+output.txt
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
