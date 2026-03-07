@@ -1,4 +1,10 @@
 # =========================================================
+#                DATA SOURCES
+# =========================================================
+
+data "aws_caller_identity" "current" {}
+
+# =========================================================
 #              GITHUB OIDC PROVIDER FOR CI/CD
 # =========================================================
 
@@ -168,12 +174,209 @@ resource "aws_iam_policy" "lambda_glue_policy" {
           "glue:GetDatabase",
           "glue:GetTable",
           "glue:GetPartitions",
-          "glue:CreatePartition"
+          "glue:CreatePartition",
+          "glue:DeletePartition"
         ]
         Resource = "*"
       }
     ]
   })
+}
+
+# =========================================================
+#           IAM ROLE UNTUK SLACK ALERT LAMBDA
+# =========================================================
+
+resource "aws_iam_role" "slack_lambda_role" {
+  name = "jobscraper_slack_lambda_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Project   = "Job-Scraper"
+    Purpose   = "SlackAlertLambda"
+    ManagedBy = "Terraform"
+  }
+}
+
+# Policy untuk Athena (query job postings dari Silver layer)
+resource "aws_iam_policy" "slack_athena_policy" {
+  name        = "jobscraper_slack_athena_policy"
+  description = "Allow Slack Lambda to query Athena for new job postings"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAthenaQueryExecution"
+        Effect = "Allow"
+        Action = [
+          "athena:StartQueryExecution",
+          "athena:StopQueryExecution",
+          "athena:GetQueryExecution",
+          "athena:GetQueryResults",
+          "athena:GetWorkGroup"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowGlueAccess"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetTable",
+          "glue:GetPartitions"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowLakeFormationAccess"
+        Effect = "Allow"
+        Action = [
+          "lakeformation:GetDataAccess",
+          "lakeformation:GetDataLakePrincipal"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Policy untuk SSM (get Slack webhook URL dari Parameter Store)
+resource "aws_iam_policy" "slack_ssm_policy" {
+  name        = "jobscraper_slack_ssm_policy"
+  description = "Allow Slack Lambda to retrieve webhook URL from SSM Parameter Store"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowGetParameter"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:*:*:parameter/jobscraper/slack/*"
+      }
+    ]
+  })
+}
+
+# Policy untuk S3 (read Athena query results)
+resource "aws_iam_policy" "slack_s3_policy" {
+  name        = "jobscraper_slack_s3_policy"
+  description = "Allow Slack Lambda to read S3 query results from Athena"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAthenaQueryResultsAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket",
+          "s3:ListBucketMultipartUploads",
+          "s3:GetBucketLocation",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          data.aws_s3_bucket.athena_query_results.arn,
+          "${data.aws_s3_bucket.athena_query_results.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+# Lake Formation Data Lake Settings - Add Lambda role as Data Lake Admin
+# Also disable cross-account filtering to simplify permissions
+resource "aws_lakeformation_data_lake_settings" "slack_lambda_admin" {
+  depends_on = [aws_iam_role.slack_lambda_role]
+
+  admins = [
+    aws_iam_role.slack_lambda_role.arn
+  ]
+
+  # Disable fine-grained access control which is causing column-level permission issues
+  allow_external_data_filtering = false
+}
+
+# Athena Workgroup untuk Slack Lambda
+resource "aws_athena_workgroup" "slack_alert_workgroup" {
+  name            = "jobscraper-slack-alert-workgroup"
+  force_destroy   = true
+  state           = "ENABLED"
+
+  configuration {
+    enforce_workgroup_configuration    = true
+    publish_cloudwatch_metrics_enabled = false
+
+    result_configuration {
+      output_location = "s3://${data.aws_s3_bucket.athena_query_results.id}/athena-query-results/jobscraper/"
+    }
+
+    engine_version {
+      selected_engine_version = "AUTO"
+    }
+  }
+
+  tags = {
+    Project = "Job-Scraper"
+    Purpose = "SlackAlerts"
+  }
+}
+
+# Attach policies ke slack_lambda_role
+resource "aws_iam_role_policy_attachment" "slack_athena_attachment" {
+  role       = aws_iam_role.slack_lambda_role.name
+  policy_arn = aws_iam_policy.slack_athena_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "slack_ssm_attachment" {
+  role       = aws_iam_role.slack_lambda_role.name
+  policy_arn = aws_iam_policy.slack_ssm_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "slack_s3_attachment" {
+  role       = aws_iam_role.slack_lambda_role.name
+  policy_arn = aws_iam_policy.slack_s3_policy.arn
+}
+
+# Also attach basic Lambda execution policy untuk logs ke CloudWatch
+resource "aws_iam_role_policy_attachment" "slack_basic_execution" {
+  role       = aws_iam_role.slack_lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# =========================================================
+#        LAMBDA LAYER - SLACK ALERT DEPENDENCIES
+# =========================================================
+
+# Zip file untuk Lambda Layer (requests library)
+data "archive_file" "slack_alert_layer" {
+  type        = "zip"
+  source_dir  = "${path.module}/../lambda-layers/slack-alert-layer"
+  output_path = "${path.module}/../.terraform-artifacts/slack-alert-layer.zip"
+}
+
+resource "aws_lambda_layer_version" "slack_alert_layer" {
+  filename            = data.archive_file.slack_alert_layer.output_path
+  layer_name          = "jobscraper-slack-alert-layer"
+  compatible_runtimes = ["python3.12"]
+  source_code_hash    = data.archive_file.slack_alert_layer.output_base64sha256
+
+  depends_on = [aws_iam_role.slack_lambda_role]
 }
 
 resource "aws_iam_user_policy_attachment" "jobscraper_bot_s3_write" {
@@ -227,6 +430,14 @@ resource "aws_s3_bucket_public_access_block" "silver" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# QUERY RESULTS (untuk Athena) - menggunakan bucket yang sudah ada
+# Bucket: weather-data-lake-sanju (sudah ada di AWS account)
+# Path: athena-query-results/Unsaved/
+
+data "aws_s3_bucket" "athena_query_results" {
+  bucket = "weather-data-lake-sanju"
 }
 
 # =========================================================
@@ -405,6 +616,50 @@ resource "aws_lambda_function" "silver_layer" {
 
   memory_size = 1024
   timeout     = 300
+}
+
+# Resource untuk Slack Alert
+data "archive_file" "slack_alert_code" {
+  type        = "zip"
+  source_dir  = "${path.module}/../src/slack-alert"
+  output_path = "${path.module}/../.terraform-artifacts/slack-alert.zip"
+}
+
+resource "aws_lambda_function" "slack_alert" {
+  function_name = "jobscraper-slack-alert"
+  role          = aws_iam_role.slack_lambda_role.arn
+  filename      = data.archive_file.slack_alert_code.output_path
+  source_code_hash = data.archive_file.slack_alert_code.output_base64sha256
+  handler       = "slack_handler.lambda_handler"
+  runtime       = "python3.12"
+  architectures = ["x86_64"]
+
+  layers = [
+    aws_lambda_layer_version.slack_alert_layer.arn
+  ]
+
+  environment {
+    variables = {
+      AWS_GLUE_DATABASE_NAME = "jobscraper_db"
+    }
+  }
+
+  memory_size = 512
+  timeout     = 60
+
+  depends_on = [
+    aws_iam_role_policy_attachment.slack_athena_attachment,
+    aws_iam_role_policy_attachment.slack_ssm_attachment,
+    aws_iam_role_policy_attachment.slack_s3_attachment,
+    aws_iam_role_policy_attachment.slack_basic_execution,
+    aws_lambda_layer_version.slack_alert_layer
+  ]
+
+  tags = {
+    Project   = "Job-Scraper"
+    Purpose   = "SlackAlerts"
+    ManagedBy = "Terraform"
+  }
 }
 
 # =========================================================
@@ -668,7 +923,8 @@ resource "aws_iam_policy" "step_functions_policy" {
           "${aws_lambda_function.kalibrr.arn}:*",
           "${aws_lambda_function.glints.arn}:*",
           "${aws_lambda_function.jobstreet.arn}:*",
-          "${aws_lambda_function.silver_layer.arn}:*"
+          "${aws_lambda_function.silver_layer.arn}:*",
+          "${aws_lambda_function.slack_alert.arn}:*"
         ]
       },
       {
@@ -720,11 +976,30 @@ resource "aws_sfn_state_machine" "joscraper_orchestrator" {
     glints_lambda_arn       = aws_lambda_function.glints.arn
     jobstreet_lambda_arn    = aws_lambda_function.jobstreet.arn
     silver_layer_lambda_arn = aws_lambda_function.silver_layer.arn
+    slack_alert_lambda_arn  = aws_lambda_function.slack_alert.arn
   })
 
   logging_configuration {
     level                  = "ERROR"
     include_execution_data = true
     log_destination        = "${aws_cloudwatch_log_group.step_functions_logs.arn}:*"
+  }
+}
+
+# SSM PARAMETER STORE
+
+resource "aws_ssm_parameter" "slack_webhook_url" {
+  name  = "/jobscraper/slack/webhook_url"
+  type  = "SecureString"
+  value = var.slack_webhook_url != "" ? var.slack_webhook_url : "default"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "SlackWebhookURL"
   }
 }

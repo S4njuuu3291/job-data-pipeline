@@ -112,7 +112,9 @@ def upload_to_silver(df: pd.DataFrame) -> str:
             logger.info(f"♻️ Existing partition /{processed_date} deleted.")
         except ClientError as e:
             if e.response["Error"]["Code"] == "EntityNotFoundException":
-                logger.info(f"ℹ️ Partition /{processed_date} doesn't exist, creating new one.")
+                logger.info(
+                    f"ℹ️ Partition /{processed_date} doesn't exist, creating new one."
+                )
             else:
                 # Log but don't fail on delete errors
                 logger.warning(f"⚠️ Could not delete existing partition: {e}")
