@@ -103,3 +103,89 @@ class TestValidateSilverSchema:
         """Test that validation returns the same dataframe when valid."""
         result = validate_silver_schema(valid_dataframe)
         pd.testing.assert_frame_equal(result, valid_dataframe)
+
+    def test_validate_empty_dataframe(self):
+        """Test validation succeeds with empty dataframe (edge case)."""
+        df = pd.DataFrame(
+            {
+                "job_id": [],
+                "job_title": [],
+                "company_name": [],
+                "location": [],
+                "job_url": [],
+                "platform": [],
+            }
+        )
+        result = validate_silver_schema(df)
+        assert len(result) == 0
+
+    def test_validate_wrong_data_types(self):
+        """Test validation fails when data types are incorrect."""
+        df = pd.DataFrame(
+            {
+                "job_id": [123, 456],  # Should be string, not int
+                "job_title": ["Engineer", "Developer"],
+                "company_name": ["Company A", "Company B"],
+                "location": ["Jakarta", "Bandung"],
+                "job_url": ["http://example.com/1", "http://example.com/2"],
+                "platform": ["kalibrr", "glints"],
+            }
+        )
+        with pytest.raises(pa.errors.SchemaError):
+            validate_silver_schema(df)
+
+    def test_validate_large_dataset(self):
+        """Test validation works correctly with large dataset (1000 rows)."""
+        df = pd.DataFrame(
+            {
+                "job_id": [f"id_{i}" for i in range(1000)],
+                "job_title": ["Data Engineer"] * 1000,
+                "company_name": ["Company A"] * 1000,
+                "location": ["Jakarta"] * 1000,
+                "job_url": [f"http://example.com/{i}" for i in range(1000)],
+                "platform": ["kalibrr"] * 1000,
+            }
+        )
+        result = validate_silver_schema(df)
+        assert len(result) == 1000
+
+    def test_validate_with_special_characters(self):
+        """Test validation succeeds with special characters in string fields."""
+        df = pd.DataFrame(
+            {
+                "job_id": ["id@1", "id#2"],
+                "job_title": ["Data Engineer (E-2)", "Backend Dev/Senior"],
+                "company_name": ["Company A & B", "PT. XYZ Indonesia"],
+                "location": ["Jakarta, Pusat", "Bandung-Timur"],
+                "job_url": [
+                    "http://example.com/job?id=1&type=full",
+                    "http://example.com/job?id=2",
+                ],
+                "platform": ["kalibrr", "glints"],
+            }
+        )
+        result = validate_silver_schema(df)
+        assert len(result) == 2
+
+    def test_validate_mixed_platforms(self):
+        """Test validation with all allowed platforms mixed together."""
+        df = pd.DataFrame(
+            {
+                "job_id": ["id1", "id2", "id3"],
+                "job_title": ["Engineer", "Developer", "Analyst"],
+                "company_name": ["Company A", "Company B", "Company C"],
+                "location": ["Jakarta", "Bandung", "Surabaya"],
+                "job_url": [
+                    "http://example.com/1",
+                    "http://example.com/2",
+                    "http://example.com/3",
+                ],
+                "platform": ["kalibrr", "glints", "jobstreet"],
+            }
+        )
+        result = validate_silver_schema(df)
+        assert result["platform"].unique().tolist() == [
+            "kalibrr",
+            "glints",
+            "jobstreet",
+        ]
