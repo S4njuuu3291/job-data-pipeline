@@ -991,5 +991,15 @@ resource "aws_sfn_state_machine" "joscraper_orchestrator" {
 resource "aws_ssm_parameter" "slack_webhook_url" {
   name  = "/jobscraper/slack/webhook_url"
   type  = "SecureString"
-  value = var.slack_webhook_url
+  value = var.slack_webhook_url != "" ? var.slack_webhook_url : "default"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = {
+    Project   = "Job-Scraper"
+    ManagedBy = "Terraform"
+    Purpose   = "SlackWebhookURL"
+  }
 }

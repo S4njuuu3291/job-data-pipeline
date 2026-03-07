@@ -6,7 +6,7 @@ variable "aws_region" {
 
 variable "slack_webhook_url" {
   type        = string
-  default     = "template_webhook_url"
-  description = "Slack webhook URL for sending alerts"
+  default     = ""
+  description = "Slack webhook URL for sending alerts. Leave empty and set manually in AWS Console SSM Parameter Store"
   sensitive   = true
 }
