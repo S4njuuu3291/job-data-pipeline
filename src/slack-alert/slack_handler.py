@@ -4,26 +4,33 @@ import time
 from typing import TYPE_CHECKING
 from boto3 import client
 import requests
-import os
 
 if TYPE_CHECKING:
     from mypy_boto3_athena import AthenaClient
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def import_url():
     ssm = client("ssm")
     try:
-        response = ssm.get_parameter(Name="/jobscraper/slack/webhook_url", WithDecryption=True)
+        response = ssm.get_parameter(
+            Name="/jobscraper/slack/webhook_url", WithDecryption=True
+        )
         return response["Parameter"]["Value"]
     except Exception as e:
         logger.error(f"Failed to retrieve Slack webhook URL from SSM: {e}")
         raise
 
-def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> list[dict]:
+
+def athena_query(
+    ingestion_date: str = datetime.now().strftime("%Y-%m-%d"),
+) -> list[dict]:
     athena: AthenaClient = client("athena")
-    
+
     # Use v_jobscraper_clean view which has ingestion_date and discovery_type columns
     # Lake Formation permissions now granted for the view
     query = f"""
@@ -34,11 +41,11 @@ def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> l
 
     logger.info(f"Executing Athena query for date: {ingestion_date}")
     logger.info(f"Query: {query}")
-    
+
     response = athena.start_query_execution(
         QueryString=query,
         QueryExecutionContext={"Database": "jobscraper_db"},
-        WorkGroup="jobscraper-slack-alert-workgroup"
+        WorkGroup="jobscraper-slack-alert-workgroup",
     )
 
     query_id = response["QueryExecutionId"]
@@ -55,11 +62,11 @@ def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> l
         time.sleep(2)
 
     parsed_data = []
-    
+
     if status == "SUCCEEDED":
         results = athena.get_query_results(QueryExecutionId=query_id)
         rows = results["ResultSet"]["Rows"]
-        
+
         logger.info(f"Query returned {len(rows)} rows (including header)")
 
         if len(rows) <= 1:
@@ -83,18 +90,19 @@ def athena_query(ingestion_date: str = datetime.now().strftime('%Y-%m-%d')) -> l
             except (IndexError, KeyError) as e:
                 logger.warning(f"Error parsing row {row_idx}: {e}")
                 continue
-    
+
         logger.info(f"✅ Parsed {len(parsed_data)} job records successfully!")
         print(f"✅ Parsed {len(parsed_data)} job records successfully!")
     else:
         logger.error(f"Query failed with status: {status}")
         print(f"❌ Query failed with status: {status}")
         if "StateChangeReason" in query_status["QueryExecution"]["Status"]:
-            reason = query_status['QueryExecution']['Status']['StateChangeReason']
+            reason = query_status["QueryExecution"]["Status"]["StateChangeReason"]
             logger.error(f"Reason: {reason}")
             print(f"❌ Reason: {reason}")
-    
+
     return parsed_data
+
 
 def send_slack_alert(blocks: list, webhook_url: str):
     """Send alert message to Slack channel via webhook using Block Kit."""
@@ -107,101 +115,101 @@ def send_slack_alert(blocks: list, webhook_url: str):
     except requests.exceptions.RequestException as e:
         print(f"❌ Failed to send alert to Slack: {e}")
 
+
 def shorten_url(url: str) -> str:
     """Shorten URL using TinyURL API."""
     try:
-        response = requests.get(f"https://tinyurl.com/api-create.php?url={url}", timeout=5)
+        response = requests.get(
+            f"https://tinyurl.com/api-create.php?url={url}", timeout=5
+        )
         if response.status_code == 200:
             return response.text
     except Exception as e:
         logger.warning(f"Failed to shorten URL: {e}")
-    
+
     return url  # Fallback to original URL
 
 
 def format_job_blocks(parsed_data: list[dict]) -> list:
     """Format job data into Slack Block Kit format for mobile-friendly display."""
-    
+
     # Platform emoji and color mapping
     platform_config = {
-        'glints': {'emoji': '🎯', 'color': '#FF6B6B'},
-        'jobstreet': {'emoji': '💼', 'color': '#4ECDC4'},
-        'kalibrr': {'emoji': '⭐', 'color': '#FFE66D'}
+        "glints": {"emoji": "🎯", "color": "#FF6B6B"},
+        "jobstreet": {"emoji": "💼", "color": "#4ECDC4"},
+        "kalibrr": {"emoji": "⭐", "color": "#FFE66D"},
     }
-    
+
     blocks = []
-    
+
     # Header section
     wib = timezone(timedelta(hours=7))
     now_wib = datetime.now(wib)
-    time_str = now_wib.strftime('%d %b, %H:%M WIB')
-    
+    time_str = now_wib.strftime("%d %b, %H:%M WIB")
+
     if not parsed_data:
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "ℹ️ *No new job postings found for today.*"
-            }
-        })
-        return blocks
-    
-    blocks.append({
-        "type": "header",
-        "text": {
-            "type": "plain_text",
-            "text": f"🆕 {len(parsed_data)} New Job{'s' if len(parsed_data) > 1 else ''} Found",
-            "emoji": True
-        }
-    })
-    
-    blocks.append({
-        "type": "context",
-        "elements": [
+        blocks.append(
             {
-                "type": "mrkdwn",
-                "text": f"📋 {time_str}"
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "ℹ️ *No new job postings found for today.*",
+                },
             }
-        ]
-    })
-    
+        )
+        return blocks
+
+    blocks.append(
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"🆕 {len(parsed_data)} New Job{'s' if len(parsed_data) > 1 else ''} Found",
+                "emoji": True,
+            },
+        }
+    )
+
+    blocks.append(
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": f"📋 {time_str}"}]}
+    )
+
     blocks.append({"type": "divider"})
-    
+
     # Job listings
     for idx, job in enumerate(parsed_data, 1):
-        platform = job.get('platform', 'unknown').lower()
-        config = platform_config.get(platform, {'emoji': '💼', 'color': '#5C5C5C'})
-        
-        short_url = shorten_url(job['job_url'])
-        
+        platform = job.get("platform", "unknown").lower()
+        config = platform_config.get(platform, {"emoji": "💼", "color": "#5C5C5C"})
+
+        short_url = shorten_url(job["job_url"])
+
         # Job card with context
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*{idx}. {job['job_title']}*\n{config['emoji']} {job['company_name']} • 📍 {job['location']}"
-            },
-            "accessory": {
-                "type": "button",
+        blocks.append(
+            {
+                "type": "section",
                 "text": {
-                    "type": "plain_text",
-                    "text": "Open",
-                    "emoji": True
+                    "type": "mrkdwn",
+                    "text": f"*{idx}. {job['job_title']}*\n{config['emoji']} {job['company_name']} • 📍 {job['location']}",
                 },
-                "url": short_url,
-                "style": "primary"
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Open", "emoji": True},
+                    "url": short_url,
+                    "style": "primary",
+                },
             }
-        })
-        
+        )
+
         if idx < len(parsed_data):
             blocks.append({"type": "divider"})
-    
+
     return blocks
 
+
 def lambda_handler(event, context):
-    ingestion_date = event.get("ingestion_date", datetime.now().strftime('%Y-%m-%d'))
+    ingestion_date = event.get("ingestion_date", datetime.now().strftime("%Y-%m-%d"))
     parsed_data = athena_query(ingestion_date)
-    
+
     # Format job data into Slack blocks
     blocks = format_job_blocks(parsed_data)
 
@@ -209,11 +217,8 @@ def lambda_handler(event, context):
     send_slack_alert(blocks, import_url())
     logger.info(f"Alert sent: {len(parsed_data)} jobs")
 
-    return {
-        "statusCode": 200,
-        "body": "Slack message sent successfully!"
-    }
+    return {"statusCode": 200, "body": "Slack message sent successfully!"}
+
 
 if __name__ == "__main__":
-
     lambda_handler({"ingestion_date": "2026-03-05"}, {})

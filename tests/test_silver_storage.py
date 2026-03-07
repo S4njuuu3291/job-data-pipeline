@@ -173,10 +173,10 @@ class TestUploadToSilver:
 
         mock_s3 = MagicMock()
         mock_glue = MagicMock()
-        
+
         # Configure mock to return s3 on first call, glue on second
         mock_s3_client.side_effect = [mock_s3, mock_glue]
-        
+
         mock_s3.put_object.return_value = {"ETag": "abc123"}
         # Mock delete_partition to raise EntityNotFoundException (partition doesn't exist)
         mock_glue.delete_partition.side_effect = ClientError(
@@ -234,7 +234,7 @@ class TestUploadToSilver:
         mock_s3 = MagicMock()
         mock_glue = MagicMock()
         mock_s3_client.side_effect = [mock_s3, mock_glue]
-        
+
         # Mock delete_partition to raise EntityNotFoundException
         mock_glue.delete_partition.side_effect = ClientError(
             {"Error": {"Code": "EntityNotFoundException"}}, "DeletePartition"

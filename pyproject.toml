@@ -32,6 +32,13 @@ boto3-stubs = "^1.42.53"
 autoflake = "^2.3.2"
 ruff = "^0.15.4"
 
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["src/slack-alert"]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
