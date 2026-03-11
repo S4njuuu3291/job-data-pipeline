@@ -510,7 +510,7 @@ resource "aws_lambda_function" "kalibrr" {
     }
   }
 
-  memory_size = 3008
+  memory_size = 2048
   timeout     = 900
 }
 
@@ -544,7 +544,7 @@ resource "aws_lambda_function" "glints" {
     }
   }
 
-  memory_size = 3008
+  memory_size = 2048
   timeout     = 900
 }
 
@@ -578,7 +578,7 @@ resource "aws_lambda_function" "jobstreet" {
     }
   }
 
-  memory_size = 3008
+  memory_size = 2048
   timeout     = 900
 }
 
