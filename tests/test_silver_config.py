@@ -78,6 +78,8 @@ class TestJobSilverSchema:
             "location",
             "job_url",
             "platform",
+            "scraped_at",
+            "keyword",
         }
         assert set(JOB_SILVER_SCHEMA.columns.keys()) == expected_columns
 
