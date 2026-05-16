@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone, timedelta
 import logging
 import time
@@ -29,6 +30,10 @@ def import_url():
 def athena_query(
     ingestion_date: str = datetime.now().strftime("%Y-%m-%d"),
 ) -> list[dict]:
+    # Validasi format tanggal untuk mencegah SQL injection
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", ingestion_date):
+        raise ValueError(f"Invalid ingestion_date format: {ingestion_date}")
+
     athena: AthenaClient = client("athena")
 
     # Use v_jobscraper_clean view which has ingestion_date and discovery_type columns
@@ -184,12 +189,18 @@ def format_job_blocks(parsed_data: list[dict]) -> list:
         short_url = shorten_url(job["job_url"])
 
         # Job card with context
+        keyword_label = f" • 🔑 {job.get('keyword', '-')}" if job.get("keyword") else ""
+        job_text = (
+            f"*{idx}. {job['job_title']}*\n"
+            f"{config['emoji']} {job['company_name']} • 📍 {job['location']}"
+            f"{keyword_label}"
+        )
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{idx}. {job['job_title']}*\n{config['emoji']} {job['company_name']} • 📍 {job['location']}",
+                    "text": job_text,
                 },
                 "accessory": {
                     "type": "button",
@@ -208,6 +219,9 @@ def format_job_blocks(parsed_data: list[dict]) -> list:
 
 def lambda_handler(event, context):
     ingestion_date = event.get("ingestion_date", datetime.now().strftime("%Y-%m-%d"))
+    # Validasi format tanggal untuk mencegah SQL injection
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", ingestion_date):
+        raise ValueError(f"Invalid ingestion_date format: {ingestion_date}")
     parsed_data = athena_query(ingestion_date)
 
     # Format job data into Slack blocks

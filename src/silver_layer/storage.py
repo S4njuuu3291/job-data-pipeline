@@ -3,7 +3,6 @@
 import io
 import logging
 import os
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -12,6 +11,7 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from .config import get_bronze_bucket_name
+from src.utils.time_utils import now_wib
 
 load_dotenv()
 
@@ -33,7 +33,7 @@ def get_bronze_object(list_platforms: list[str]) -> pd.DataFrame:
     """
     bucket_name = get_bronze_bucket_name()
     s3: S3Client = boto3.client("s3")
-    ingestion_date = datetime.now().strftime("%Y-%m-%d")
+    ingestion_date = now_wib().strftime("%Y-%m-%d")
 
     try:
         df = pd.DataFrame()
@@ -86,10 +86,12 @@ def upload_to_silver(df: pd.DataFrame) -> str:
     s3: S3Client = boto3.client("s3")
     glue: GlueClient = boto3.client("glue")
 
-    processed_date = datetime.now().strftime("%Y-%m-%d")
+    now = now_wib()
+    processed_date = now.strftime("%Y-%m-%d")
+    file_timestamp = now.strftime("%Y%m%d_%H%M%S")
 
     partition_prefix = f"ingestion_date={processed_date}/"
-    object_key = f"{partition_prefix}job_data_{processed_date}.parquet"
+    object_key = f"{partition_prefix}job_data_{processed_date}_{file_timestamp}.parquet"
 
     buffer = io.BytesIO()
     df.to_parquet(buffer, index=False, engine="pyarrow")
@@ -102,41 +104,30 @@ def upload_to_silver(df: pd.DataFrame) -> str:
 
         logger.info(f"Registering partition to Glue: {db_name}.{table_name}")
 
-        # Try to delete existing partition first (for idempotency)
+        # Create partition if it doesn't exist yet (idempotent)
         try:
-            glue.delete_partition(
+            glue.create_partition(
                 DatabaseName=db_name,
                 TableName=table_name,
-                PartitionValues=[processed_date],
-            )
-            logger.info(f"♻️ Existing partition /{processed_date} deleted.")
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "EntityNotFoundException":
-                logger.info(
-                    f"ℹ️ Partition /{processed_date} doesn't exist, creating new one."
-                )
-            else:
-                # Log but don't fail on delete errors
-                logger.warning(f"⚠️ Could not delete existing partition: {e}")
-
-        # Create fresh partition
-        glue.create_partition(
-            DatabaseName=db_name,
-            TableName=table_name,
-            PartitionInput={
-                "Values": [processed_date],
-                "StorageDescriptor": {
-                    "Location": f"s3://{bucket_name}/{partition_prefix}",
-                    "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
-                    "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
-                    "SerdeInfo": {
-                        "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
-                        "Parameters": {"serialization.format": "1"},
+                PartitionInput={
+                    "Values": [processed_date],
+                    "StorageDescriptor": {
+                        "Location": f"s3://{bucket_name}/{partition_prefix}",
+                        "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                        "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                        "SerdeInfo": {
+                            "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                            "Parameters": {"serialization.format": "1"},
+                        },
                     },
                 },
-            },
-        )
-        logger.info(f"✅ Partition /{processed_date} created/replaced successfully")
+            )
+            logger.info(f"✅ Partition /{processed_date} created successfully")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "AlreadyExistsException":
+                logger.info(f"ℹ️ Partition /{processed_date} already exists, skipping.")
+            else:
+                logger.warning(f"⚠️ Could not create partition: {e}")
 
     except ClientError as e:
         logger.error(f"❌ AWS ClientError: {e}")

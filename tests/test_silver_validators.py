@@ -25,6 +25,8 @@ class TestValidateSilverSchema:
                     "http://example.com/3",
                 ],
                 "platform": ["kalibrr", "glints", "jobstreet"],
+                "scraped_at": ["20260305_090000"] * 3,
+                "keyword": ["data-engineer"] * 3,
             }
         )
 
@@ -39,6 +41,8 @@ class TestValidateSilverSchema:
             "location",
             "job_url",
             "platform",
+            "scraped_at",
+            "keyword",
         ]
 
     def test_validate_missing_required_column(self):
@@ -64,6 +68,8 @@ class TestValidateSilverSchema:
                 "location": ["Jakarta", "Bandung"],
                 "job_url": ["http://example.com/1", "http://example.com/2"],
                 "platform": ["kalibrr", "glints"],
+                "scraped_at": ["20260305_090000", "20260305_090100"],
+                "keyword": ["kw1", "kw2"],
             }
         )
         with pytest.raises(pa.errors.SchemaError):
@@ -79,6 +85,8 @@ class TestValidateSilverSchema:
                 "location": ["Jakarta"],
                 "job_url": ["http://example.com/1"],
                 "platform": ["invalid_platform"],  # Not in allowed list
+                "scraped_at": ["20260305_090000"],
+                "keyword": ["kw"],
             }
         )
         with pytest.raises(pa.errors.SchemaError):
@@ -94,6 +102,8 @@ class TestValidateSilverSchema:
                 "location": ["Jakarta", "Bandung"],
                 "job_url": ["http://example.com/1", "http://example.com/2"],
                 "platform": ["kalibrr", "glints"],
+                "scraped_at": ["20260305_090000", "20260305_090100"],
+                "keyword": ["kw1", "kw2"],
             }
         )
         with pytest.raises(pa.errors.SchemaError):
@@ -114,6 +124,8 @@ class TestValidateSilverSchema:
                 "location": [],
                 "job_url": [],
                 "platform": [],
+                "scraped_at": [],
+                "keyword": [],
             }
         )
         result = validate_silver_schema(df)
@@ -129,6 +141,8 @@ class TestValidateSilverSchema:
                 "location": ["Jakarta", "Bandung"],
                 "job_url": ["http://example.com/1", "http://example.com/2"],
                 "platform": ["kalibrr", "glints"],
+                "scraped_at": ["20260305_090000", "20260305_090100"],
+                "keyword": ["kw1", "kw2"],
             }
         )
         with pytest.raises(pa.errors.SchemaError):
@@ -144,6 +158,8 @@ class TestValidateSilverSchema:
                 "location": ["Jakarta"] * 1000,
                 "job_url": [f"http://example.com/{i}" for i in range(1000)],
                 "platform": ["kalibrr"] * 1000,
+                "scraped_at": ["20260305_090000"] * 1000,
+                "keyword": ["kw"] * 1000,
             }
         )
         result = validate_silver_schema(df)
@@ -162,6 +178,8 @@ class TestValidateSilverSchema:
                     "http://example.com/job?id=2",
                 ],
                 "platform": ["kalibrr", "glints"],
+                "scraped_at": ["20260305_090000", "20260305_090100"],
+                "keyword": ["kw1", "kw2"],
             }
         )
         result = validate_silver_schema(df)
@@ -181,6 +199,8 @@ class TestValidateSilverSchema:
                     "http://example.com/3",
                 ],
                 "platform": ["kalibrr", "glints", "jobstreet"],
+                "scraped_at": ["20260305_090000"] * 3,
+                "keyword": ["kw"] * 3,
             }
         )
         result = validate_silver_schema(df)
