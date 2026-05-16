@@ -1,0 +1,10 @@
+FROM apache/superset:4.0.0
+USER root
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY scripts/init-superset.sh /app/init-superset.sh
+RUN chmod +x /app/init-superset.sh
+
+USER superset

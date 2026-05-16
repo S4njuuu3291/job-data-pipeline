@@ -1,0 +1,26 @@
+services:
+  # ==========================================
+  # BI / VISUALIZATION LAYER
+  # ==========================================
+  superset_job_scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_job_scraper
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: "my_very_secret_key_for_this_project"
+      SUPERSET_LOAD_EXAMPLES: "no"
+    networks:
+      - default
+    volumes:
+      - superset_home:/app/superset_home
+      - ./dashboards:/app/dashboards
+
+volumes:
+  superset_home:
+
+networks:
+  default:
+    driver: bridge
