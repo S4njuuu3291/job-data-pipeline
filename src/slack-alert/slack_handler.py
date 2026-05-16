@@ -189,9 +189,7 @@ def format_job_blocks(parsed_data: list[dict]) -> list:
         short_url = shorten_url(job["job_url"])
 
         # Job card with context
-        keyword_label = (
-            f" • 🔑 {job.get('keyword', '-')}" if job.get("keyword") else ""
-        )
+        keyword_label = f" • 🔑 {job.get('keyword', '-')}" if job.get("keyword") else ""
         job_text = (
             f"*{idx}. {job['job_title']}*\n"
             f"{config['emoji']} {job['company_name']} • 📍 {job['location']}"
