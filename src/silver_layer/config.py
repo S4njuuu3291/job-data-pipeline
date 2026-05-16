@@ -56,5 +56,7 @@ JOB_SILVER_SCHEMA = DataFrameSchema(
         "location": Column(str),
         "job_url": Column(str),
         "platform": Column(str, Check.isin(get_list_platforms())),
+        "scraped_at": Column(str),
+        "keyword": Column(str),
     }
 )
