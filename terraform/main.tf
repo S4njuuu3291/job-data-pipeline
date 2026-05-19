@@ -364,17 +364,17 @@ resource "aws_iam_role_policy_attachment" "slack_basic_execution" {
 # =========================================================
 
 # Zip file untuk Lambda Layer (requests library)
-data "archive_file" "slack_alert_layer" {
+resource "archive_file" "slack_alert_layer" {
   type        = "zip"
   source_dir  = "${path.module}/../lambda-layers/slack-alert-layer"
   output_path = "${path.module}/../.terraform-artifacts/slack-alert-layer.zip"
 }
 
 resource "aws_lambda_layer_version" "slack_alert_layer" {
-  filename            = data.archive_file.slack_alert_layer.output_path
+  filename            = archive_file.slack_alert_layer.output_path
   layer_name          = "jobscraper-slack-alert-layer"
   compatible_runtimes = ["python3.12"]
-  source_code_hash    = data.archive_file.slack_alert_layer.output_base64sha256
+  source_code_hash    = archive_file.slack_alert_layer.output_base64sha256
 
   depends_on = [aws_iam_role.slack_lambda_role]
 }
