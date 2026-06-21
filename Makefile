@@ -47,4 +47,17 @@ help:
 	@echo "  make mypy          - Run type check with mypy"
 	@echo "  make test          - Run pytest"
 	@echo "  make ci            - Run all CI checks (fmt + lint + mypy + test)"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build  - Build docker images"
+	@echo "  make docker-up     - Start containers in background"
+	@echo "  make init-superset - Init Superset (db upgrade, create admin, init)"
 
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up -d
+
+init-superset:
+	docker compose exec superset_job_scraper /bin/bash /app/init-superset.sh
